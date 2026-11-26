@@ -22,6 +22,7 @@ from src.privacy.pseudonymization import (
     PSEUDONYM_DOMAIN,
     assign_cluster_pseudonyms,
 )
+from src.privacy import AdaptivePrivacyEngine
 
 
 def _record(
@@ -191,6 +192,50 @@ class PseudonymSafetyTests(unittest.TestCase):
                 [_cluster("clu_1", "rec_1")],
                 b"",
             )
+
+    def test_unresolved_phone_is_redacted_with_safe_reason(self) -> None:
+        record = _record("rec_1", phones=["+919876543210"])
+        record.detections = [
+            DetectionSpan(
+                "rec_1",
+                "doc",
+                0,
+                10,
+                "PHONE",
+                SpanRole.DIRECT_PII,
+                1.0,
+                "synthetic",
+            ),
+            DetectionSpan(
+                "rec_1",
+                "doc",
+                12,
+                22,
+                "CLINICIAN_NAME",
+                SpanRole.STAFF_OR_FACILITY,
+                1.0,
+                "synthetic",
+            ),
+        ]
+        cluster = _cluster(
+            "clu_1", "rec_1", status=ResolutionStatus.UNRESOLVED
+        )
+
+        decisions = AdaptivePrivacyEngine().transform(
+            [record], [cluster], b"secret-alpha"
+        )
+
+        redactions = [
+            decision
+            for decision in decisions
+            if decision.transform_type == TransformType.REDACT
+        ]
+        self.assertEqual(len(redactions), 1)
+        self.assertEqual(redactions[0].field_path, "doc")
+        self.assertEqual(
+            redactions[0].replacement_value,
+            "[UNRESOLVED: PHONE_WITHOUT_DOB_OR_STABLE_ID]",
+        )
 
     def test_truncated_collision_is_extended_deterministically(self) -> None:
         secret = b"collision-test-secret"

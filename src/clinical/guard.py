@@ -171,7 +171,17 @@ class ClinicalIntegrityGuard:
     ) -> tuple[list[DetectionSpan], list[str]]:
         """Enforce `CLINICAL_PROTECTED` precedence while never concealing hard PII."""
         incoming_clinical = [s for s in spans if s.role == SpanRole.CLINICAL_PROTECTED]
-        detected_clinical = self.extract_clinical_spans(record)
+        # MultilingualPIIDetector already performs one complete clinical scan before
+        # returning its spans.  The pipeline calls the guard again at the shared
+        # interface boundary, so reuse those guard-produced spans instead of
+        # repeating every medication, vital, lab, and diagnosis regex pass.
+        already_scanned = any(
+            span.detector_source == "clinical_guard"
+            for span in incoming_clinical
+        )
+        detected_clinical = (
+            [] if already_scanned else self.extract_clinical_spans(record)
+        )
         all_clinical_raw = incoming_clinical + detected_clinical
 
         # Hard PII spans always win against overlapping broad clinical guesses (anti-concealment).

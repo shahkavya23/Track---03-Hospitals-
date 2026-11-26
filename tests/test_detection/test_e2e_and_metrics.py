@@ -151,6 +151,41 @@ class EndToEndAndMetricsTests(unittest.TestCase):
             self.assertNotIn("12-3456-7890-1234", sanitized)
             self.assertIn("Dolo 650 BD x 5 days", sanitized)
 
+    def test_unresolved_record_explains_why_no_patient_code_was_created(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            input_dir = root / "input"
+            output_dir = root / "output"
+            input_dir.mkdir()
+            (input_dir / "note.txt").write_text(
+                "Phone: 9876543210. BP 120/80",
+                encoding="utf-8",
+            )
+
+            previous_secret = os.environ.get("RAKSHA_SECRET")
+            os.environ["RAKSHA_SECRET"] = "synthetic-pipeline-test-secret"
+            try:
+                RakshaPipeline().run(input_dir, output_dir)
+            finally:
+                if previous_secret is None:
+                    os.environ.pop("RAKSHA_SECRET", None)
+                else:
+                    os.environ["RAKSHA_SECRET"] = previous_secret
+
+            sanitized = (output_dir / "sanitized" / "note.txt").read_text(
+                encoding="utf-8"
+            )
+            record_line = json.loads(
+                (output_dir / "records.jsonl").read_text(encoding="utf-8").strip()
+            )
+
+            self.assertNotIn("9876543210", sanitized)
+            self.assertIn(
+                "[UNRESOLVED: PHONE_WITHOUT_DOB_OR_STABLE_ID]", sanitized
+            )
+            self.assertIn("BP 120/80", sanitized)
+            self.assertIsNone(record_line["patient"])
+
     def test_synthetic_multilingual_benchmark_metrics(self) -> None:
         # Synthetic labeled evaluation corpus across EN, HI, and Hinglish.
         gold_cases = [
