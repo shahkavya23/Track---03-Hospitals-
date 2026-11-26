@@ -97,31 +97,37 @@ export default function App() {
   };
 
   const handleFileUpload = async (event) => {
-    const uploadedFiles = event.target.files;
+    const uploadedFiles = event.target?.files;
     if (!uploadedFiles || uploadedFiles.length === 0) return;
 
     const selectedFiles = Array.from(uploadedFiles);
     const tooLargeFile = selectedFiles.find((file) => file.size > 200 * 1024 * 1024);
     if (tooLargeFile) {
       showToast(`${tooLargeFile.name} exceeds the 200 MB upload limit.`);
-      event.target.value = '';
+      if (event.target && 'value' in event.target) event.target.value = '';
       return;
     }
 
-    showToast(`Staging ${selectedFiles.length} file(s) into queue...`);
+    setRunning(true);
+    showToast(`Ingesting & validating ${selectedFiles.length} file(s)...`);
     try {
       for (const file of selectedFiles) {
-        await api.uploadFile(file);
+        const uploadRes = await api.uploadFile(file);
+        if (uploadRes.is_valid === false) {
+          showToast(`Ingestion Warning: ${file.name} quarantined (${uploadRes.quarantine_reason || 'unsupported'})`);
+        }
       }
-      showToast(`Successfully uploaded ${selectedFiles.length} file(s)`);
       await loadStatusAndFiles();
       if (selectedFiles.length > 0) {
         setSelectedDiffFile(selectedFiles[0].name);
       }
+      showToast(`Files validated. Running Privacy Firewall Pipeline...`);
+      await handleRunPipeline(selectedFiles[0]?.name);
     } catch (error) {
       showToast(error.message || 'File upload failed');
+      setRunning(false);
     } finally {
-      if (event.target) {
+      if (event.target && 'value' in event.target) {
         event.target.value = '';
       }
     }
@@ -141,7 +147,7 @@ export default function App() {
     }
   };
 
-  const handleRunPipeline = async () => {
+  const handleRunPipeline = async (targetFile) => {
     setRunning(true);
     setActiveTab('pipeline');
     try {
@@ -154,10 +160,13 @@ export default function App() {
           setClinicalEntities(data.clinical_entities);
         }
         await loadStatusAndFiles();
-        if (selectedDiffFile) {
-          await loadDiffForFile(selectedDiffFile);
+        const fileToView = targetFile || selectedDiffFile || (data.sanitized_files && data.sanitized_files[0]) || '';
+        if (fileToView) {
+          setSelectedDiffFile(fileToView);
+          await loadDiffForFile(fileToView);
         }
-        showToast('RAKSHA Privacy Firewall Run Completed!');
+        showToast('Pipeline Completed! Viewing Sanitized Output');
+        setActiveTab('diff');
       } else {
         showToast(data.error || 'Pipeline execution failed');
       }

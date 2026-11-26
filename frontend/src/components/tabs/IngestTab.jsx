@@ -232,17 +232,18 @@ export default function IngestTab({
               type="file"
               ref={fileInputRef}
               multiple
-              accept=".csv,.tsv,.json,.txt,.fhir.json,text/plain,text/csv,text/tab-separated-values,application/json"
+              onClick={(e) => { e.target.value = null; }}
               onChange={onFileUpload}
               className="hidden"
             />
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={Boolean(uploadProgress)}
+              disabled={running}
               className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-slate-950 font-bold rounded-lg text-xs shadow-lg shadow-teal-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
             >
               <FolderOpen className="w-4 h-4" />
-              {uploadProgress ? 'Uploading…' : 'Browse Files'}
+              {running ? 'Processing Pipeline…' : 'Browse Files'}
             </button>
           </div>
 

@@ -378,8 +378,9 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/upload":
-            # Stream upload: direct binary streaming from request body in 64KB chunks
             filename = query.get("filename", [""])[0]
+            content_type = self.headers.get("Content-Type", "")
+
             if filename:
                 target = INPUT_DIR / filename
                 with target.open("wb") as out_f:
@@ -390,33 +391,82 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
                             break
                         out_f.write(chunk)
                         remaining -= len(chunk)
-                self._send_json(200, {"success": True, "filename": filename, "size": target.stat().st_size})
-                return
-
-            # Fallback JSON upload
-            content_type = self.headers.get("Content-Type", "")
-            if "application/json" in content_type:
+            elif "application/json" in content_type:
                 body = self.rfile.read(content_len) if content_len > 0 else b""
                 try:
                     payload = json.loads(body.decode("utf-8", errors="replace"))
                 except Exception:
                     self._send_json(400, {"error": "Invalid JSON upload payload"})
                     return
-                fname = payload.get("filename", f"upload_{int(time.time())}.txt")
+                filename = payload.get("filename", f"upload_{int(time.time())}.txt")
                 content = payload.get("content", "")
                 is_base64 = payload.get("is_base64", False)
 
-                target = INPUT_DIR / fname
+                target = INPUT_DIR / filename
                 if is_base64:
                     target.write_bytes(base64.b64decode(content))
                 else:
                     target.write_bytes(content.encode("utf-8", errors="replace"))
-
-                self._send_json(200, {"success": True, "filename": fname, "size": target.stat().st_size})
-                return
+            elif "multipart/form-data" in content_type:
+                boundary = content_type.split("boundary=")[-1].strip()
+                body = self.rfile.read(content_len) if content_len > 0 else b""
+                parts = body.split(b"--" + boundary.encode())
+                saved = False
+                for part in parts:
+                    if b'filename="' in part:
+                        header_part, file_data = part.split(b"\r\n\r\n", 1)
+                        file_data = file_data.rstrip(b"\r\n--")
+                        header_str = header_part.decode("utf-8", errors="replace")
+                        for line in header_str.split("\r\n"):
+                            if "filename=" in line:
+                                filename = line.split('filename="')[1].split('"')[0]
+                        if not filename:
+                            filename = f"upload_{int(time.time())}.txt"
+                        target = INPUT_DIR / filename
+                        target.write_bytes(file_data)
+                        saved = True
+                        break
+                if not saved:
+                    self._send_json(400, {"error": "Could not parse file from multipart payload"})
+                    return
             else:
-                self._send_json(400, {"error": "Upload via /api/upload?filename=<name> or JSON required"})
+                self._send_json(400, {"error": "Upload requires ?filename=<name> or JSON/Multipart body"})
                 return
+
+            # Immediate Ingestion Layer check
+            is_valid = True
+            parse_status = "PARSED"
+            quarantine_reason = None
+            detected_fmt = "UNKNOWN"
+            try:
+                from src.ingestion.format_detect import detect_format
+                text_preview = ""
+                try:
+                    with target.open("r", encoding="utf-8", errors="strict") as f:
+                        text_preview = f.read(4096)
+                except Exception:
+                    pass
+                fmt_enum, _ = detect_format(target.name, text_preview)
+                detected_fmt = fmt_enum.value.upper()
+            except Exception as e:
+                is_valid = False
+                parse_status = "QUARANTINED"
+                quarantine_reason = str(e)
+                detected_fmt = "UNSUPPORTED_OR_CORRUPT"
+
+            self._send_json(
+                200,
+                {
+                    "success": True,
+                    "filename": filename,
+                    "size": target.stat().st_size,
+                    "is_valid": is_valid,
+                    "format": detected_fmt,
+                    "parse_status": parse_status,
+                    "quarantine_reason": quarantine_reason,
+                },
+            )
+            return
 
         if path == "/api/reset":
             shutil.rmtree(INPUT_DIR, ignore_errors=True)
