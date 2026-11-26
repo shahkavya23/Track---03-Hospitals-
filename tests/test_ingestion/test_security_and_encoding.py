@@ -86,6 +86,19 @@ class IngestionSecurityAndEncodingTests(unittest.TestCase):
             self.assertEqual(by_rel["legacy.txt"].parse_status, ParseStatus.PARSED)
             self.assertIn("José", by_rel["legacy.txt"].records[0].fields[0].raw_value)
 
+    def test_truncated_utf8_is_quarantined(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            in_dir = Path(tmp) / "input"
+            in_dir.mkdir()
+
+            trunc = in_dir / "truncated_hindi.txt"
+            trunc.write_bytes("मोहम्मद ".encode("utf-8") + b"\xe0\xa4")
+
+            sources = UniversalIngestor().ingest_directory(in_dir)
+            self.assertEqual(len(sources), 1)
+            self.assertEqual(sources[0].parse_status, ParseStatus.QUARANTINED)
+            self.assertEqual(sources[0].quarantine_reason, "truncated utf-8 encoding")
+
     def test_symlink_is_quarantined_without_reading_target(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
