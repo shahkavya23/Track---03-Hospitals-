@@ -107,42 +107,24 @@ export default function App() {
       event.target.value = '';
       return;
     }
-    setUploadProgress({ total: selectedFiles.length, completed: 0, currentFile: selectedFiles[0].name, percent: 0 });
-    let completed = 0;
+
+    showToast(`Staging ${selectedFiles.length} file(s) into queue...`);
     try {
       for (const file of selectedFiles) {
-        setUploadProgress({ total: selectedFiles.length, completed, currentFile: file.name, percent: 0 });
-        const content = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onprogress = (progressEvent) => {
-            if (progressEvent.lengthComputable) {
-              setUploadProgress({ total: selectedFiles.length, completed, currentFile: file.name, percent: Math.round((progressEvent.loaded / progressEvent.total) * 15) });
-            }
-          };
-          reader.onload = () => {
-            const dataUrl = String(reader.result);
-            resolve(dataUrl.slice(dataUrl.indexOf(',') + 1));
-          };
-          reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
-          reader.readAsDataURL(file);
-        });
-        await api.uploadFile(file.name, content, true, (percent) => {
-          setUploadProgress({ total: selectedFiles.length, completed, currentFile: file.name, percent: 15 + Math.round(percent * 0.85) });
-        });
-        completed += 1;
-        setUploadProgress({ total: selectedFiles.length, completed, currentFile: file.name, percent: 100 });
+        await api.uploadFile(file);
       }
+      showToast(`Successfully uploaded ${selectedFiles.length} file(s)`);
       await loadStatusAndFiles();
-      const primaryFile = selectedFiles[0].name;
-      setSelectedDiffFile(primaryFile);
-      setUploadProgress({ total: selectedFiles.length, completed: selectedFiles.length, currentFile: primaryFile, percent: 100, processing: true });
-      await handleRunPipeline('diff', primaryFile);
+      if (selectedFiles.length > 0) {
+        setSelectedDiffFile(selectedFiles[0].name);
+      }
     } catch (error) {
       showToast(error.message || 'File upload failed');
     } finally {
-      setUploadProgress(null);
+      if (event.target) {
+        event.target.value = '';
+      }
     }
-    event.target.value = '';
   };
 
   const handleDeleteFile = async (filename) => {
@@ -159,7 +141,7 @@ export default function App() {
     }
   };
 
-  const handleRunPipeline = async (destination = 'pipeline', fileToInspect = selectedDiffFile) => {
+  const handleRunPipeline = async () => {
     setRunning(true);
     setActiveTab('pipeline');
     try {
@@ -168,17 +150,14 @@ export default function App() {
         setMetrics(data.metrics);
         setReport(data.report);
         setClusters(data.clusters || {});
+        if (data.clinical_entities) {
+          setClinicalEntities(data.clinical_entities);
+        }
         await loadStatusAndFiles();
-        if (fileToInspect) {
-          setSelectedDiffFile(fileToInspect);
-          await loadDiffForFile(fileToInspect);
+        if (selectedDiffFile) {
+          await loadDiffForFile(selectedDiffFile);
         }
-        if (destination === 'diff') {
-          setActiveTab('diff');
-          showToast('Redacted output is ready to review.');
-        } else {
-          showToast('RAKSHA Privacy Firewall Run Completed!');
-        }
+        showToast('RAKSHA Privacy Firewall Run Completed!');
       } else {
         showToast(data.error || 'Pipeline execution failed');
       }
