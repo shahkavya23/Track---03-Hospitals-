@@ -1,3 +1,4 @@
+# Purpose: Verifies quarantine rules, BOM/UTF-16/CP1252/truncated UTF-8 handling, symlink rejection, and read-only inputs.
 """Security, path containment, quarantine, and encoding tests for src/ingestion/."""
 
 from __future__ import annotations

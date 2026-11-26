@@ -1,3 +1,4 @@
+# Purpose: Core in-memory dataclasses (SourceFile, PatientRecord, FieldNode, DetectionSpan, etc.) and report.json schema.
 """Canonical in-memory data models shared across Members 1, 2, and 3."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# Purpose: Parses CSV/TSV into 0-indexed `row:N` records while catching truncated quotes and preserving shifted columns.
 """CSV and TSV parser handling shifted columns, unknown headers, and truncated quotes."""
 
 from __future__ import annotations

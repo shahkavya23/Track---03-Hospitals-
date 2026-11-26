@@ -1,3 +1,4 @@
+# Purpose: Public exports for all shared data models, enums, and stage protocols across Members 1, 2, and 3.
 """Shared contract package for RAKSHA."""
 
 from .enums import (

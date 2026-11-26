@@ -1,3 +1,5 @@
+# Purpose: Prevent Python caches, virtualenvs, outputs, temp files, secrets, and raw datasets from being committed.
+
 # Python
 __pycache__/
 *.py[cod]

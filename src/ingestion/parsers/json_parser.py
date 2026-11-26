@@ -1,3 +1,4 @@
+# Purpose: Iteratively flattens nested/multi-record JSON into FieldNodes with RFC 6901 JSON Pointer `loc`s.
 """Nested and multi-record JSON parser emitting RFC 6901 JSON Pointer locs."""
 
 from __future__ import annotations

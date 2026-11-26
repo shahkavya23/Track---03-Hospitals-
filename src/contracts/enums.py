@@ -1,3 +1,4 @@
+# Purpose: Shared fixed vocabularies (file formats, parse statuses, span roles, linkage verdicts, transforms).
 """Canonical enumerations shared across all RAKSHA pipeline stages."""
 
 from __future__ import annotations

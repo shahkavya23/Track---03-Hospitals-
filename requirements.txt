@@ -1,3 +1,5 @@
+# Purpose: Pinned offline, CPU-only Python package dependencies (no LLMs or >50M transformer models).
+
 # Core runtime (offline, CPU-only, no LLMs / >50M transformers)
 charset-normalizer>=3.3,<4
 PyYAML>=6.0,<7

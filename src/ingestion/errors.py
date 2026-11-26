@@ -1,3 +1,4 @@
+# Purpose: Safe, PII-free exceptions used to fail on invalid input roots or quarantine defective files.
 """Safe, PII-free exceptions for the RAKSHA ingestion layer."""
 
 from __future__ import annotations

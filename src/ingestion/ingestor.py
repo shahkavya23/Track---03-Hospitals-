@@ -1,3 +1,4 @@
+# Purpose: Main ingestion coordinator loading policy.yaml, running security/encoding/format gates, and building SourceFiles.
 """Universal, security-hardened file ingestor for RAKSHA (Member 1)."""
 
 from __future__ import annotations

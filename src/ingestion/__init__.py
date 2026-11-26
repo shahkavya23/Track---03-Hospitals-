@@ -1,3 +1,4 @@
+# Purpose: Public API exports for Member 1's secure multi-format ingestion package.
 """RAKSHA Ingestion Layer (Member 1)."""
 
 from .encoding import DecodedText, decode_bytes_to_utf8

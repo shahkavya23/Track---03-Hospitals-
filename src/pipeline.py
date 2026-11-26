@@ -1,3 +1,4 @@
+# Purpose: Orchestrates M1 ingestion -> M2 detection/clinical guard -> M3 linkage/privacy -> M1 serialization and telemetry.
 """End-to-end RAKSHA pipeline orchestration (Member 1)."""
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from src.contracts import (
     TransformType,
 )
 from src.ingestion import IngestionConfig, UniversalIngestor
+from src.serialization import SafeOutputSerializer
 
 
 def read_secret_key() -> bytes:
@@ -69,7 +71,7 @@ class RakshaPipeline:
         self.clinical_guard = clinical_guard
         self.linker = linker
         self.privacy_engine = privacy_engine
-        self.serializer = serializer
+        self.serializer = serializer if serializer is not None else SafeOutputSerializer()
 
     def run(self, input_dir: Path, output_dir: Path) -> AuditMetrics:
         """Execute the full privacy firewall pipeline safely."""
@@ -158,6 +160,8 @@ class RakshaPipeline:
                 if any(d.transform_type == TransformType.SUPPRESS for d in rec.privacy_decisions)
             ),
             records_quarantined=0,
+            seconds=time.perf_counter() - start_ts,
+            peak_rss_mb=_peak_rss_mb(),
         )
 
         metrics = self.serializer.serialize_all(sources, output_dir, metrics)

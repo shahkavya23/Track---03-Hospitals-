@@ -1,3 +1,4 @@
+# Purpose: Exports the CSV/TSV, JSON, FHIR R4, and clinical text parsers used by UniversalIngestor.
 """Format-specific parsers returning normalized PatientRecords."""
 
 from .fhir_parser import parse_fhir_document

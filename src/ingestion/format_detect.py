@@ -1,3 +1,4 @@
+# Purpose: Verifies allowed extensions, enforces JSON depth limits, and separates FHIR R4 Bundles/Resources from JSON.
 """Secure format sniffing and classification for healthcare inputs."""
 
 from __future__ import annotations

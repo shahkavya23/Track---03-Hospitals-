@@ -1,3 +1,4 @@
+# Purpose: Verifies contract invariants, fail-closed RAKSHA_SECRET check, and stubbed end-to-end output schema.
 """Contract invariant tests and stubbed end-to-end smoke test (Phase 1+2)."""
 
 from __future__ import annotations
@@ -148,58 +149,6 @@ class _StubPrivacyEngine:
         return decisions
 
 
-class _StubSerializer:
-    """Explicit test stub for Phase 4/5 output contract smoke verification."""
-
-    def serialize_all(
-        self,
-        sources: list[SourceFile],
-        output_dir: Path,
-        metrics: AuditMetrics,
-    ) -> AuditMetrics:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        sanitized_root = output_dir / "sanitized"
-        sanitized_root.mkdir(parents=True, exist_ok=True)
-
-        records_lines: list[str] = []
-        for src in sources:
-            if src.sanitized_relative_path is None:
-                continue
-            target = output_dir / src.sanitized_relative_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-
-            if src.records and isinstance(src.records[0].original_structure, dict):
-                headers = src.records[0].original_structure["headers"]
-                with target.open("w", encoding="utf-8", newline="") as handle:
-                    writer = csv.writer(handle)
-                    writer.writerow(headers)
-                    for rec in src.records:
-                        cells = list(rec.original_structure["cells"])
-                        for dec in rec.privacy_decisions:
-                            if dec.field_path.startswith("col:") and dec.replacement_value is not None:
-                                col_idx = int(dec.field_path.split(":")[1])
-                                cells[col_idx] = dec.replacement_value
-                        writer.writerow(cells)
-
-            for rec in src.records:
-                records_lines.append(
-                    json.dumps(
-                        {
-                            "file": src.sanitized_relative_path,
-                            "loc": rec.loc,
-                            "patient": rec.pseudonym_id,
-                        }
-                    )
-                )
-
-        (output_dir / "records.jsonl").write_text("\n".join(records_lines) + "\n", encoding="utf-8")
-        (output_dir / "report.json").write_text(
-            json.dumps(metrics.to_report_dict(), indent=2),
-            encoding="utf-8",
-        )
-        return metrics
-
-
 class ContractAndSmokeTests(unittest.TestCase):
     def test_contract_invariants(self) -> None:
         with self.assertRaises(ValueError):
@@ -217,7 +166,6 @@ class ContractAndSmokeTests(unittest.TestCase):
                 clinical_guard=_StubClinicalGuard(),
                 linker=_StubLinker(),
                 privacy_engine=_StubPrivacyEngine(),
-                serializer=_StubSerializer(),
             )
             with tempfile.TemporaryDirectory() as tmp:
                 with self.assertRaises(RuntimeError):
@@ -253,7 +201,6 @@ class ContractAndSmokeTests(unittest.TestCase):
                         clinical_guard=_StubClinicalGuard(),
                         linker=_StubLinker(),
                         privacy_engine=_StubPrivacyEngine(),
-                        serializer=_StubSerializer(),
                     )
                     pipeline.run(in_dir, out_dir)
                     report_text = (out_dir / "report.json").read_text(encoding="utf-8")
@@ -286,6 +233,8 @@ class ContractAndSmokeTests(unittest.TestCase):
             self.assertEqual(report1["counts"]["files_quarantined"], 1)
             self.assertEqual(report1["counts"]["records_processed"], 2)
             self.assertEqual(report1["counts"]["records_linked"], 1)
+            self.assertGreater(report1["resources"]["peak_rss_mb"], 0.0)
+            self.assertGreaterEqual(report1["timing"]["seconds"], 0.0)
 
             self.assertEqual(recs1[0]["loc"], "row:0")
             self.assertEqual(recs1[1]["loc"], "row:1")

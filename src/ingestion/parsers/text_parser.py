@@ -1,3 +1,4 @@
+# Purpose: Wraps non-empty UTF-8 clinical text notes (`loc="doc"`) as narrative FieldNodes for detection.
 """Unstructured multilingual clinical text (.txt) parser."""
 
 from __future__ import annotations

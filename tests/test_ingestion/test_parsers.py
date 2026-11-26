@@ -1,3 +1,4 @@
+# Purpose: Verifies CSV/TSV, JSON, FHIR R4, and policy.yaml parsing plus shifted-row and malformed-file handling.
 """Format parser tests for CSV, TSV, JSON, FHIR R4, and clinical text."""
 
 from __future__ import annotations

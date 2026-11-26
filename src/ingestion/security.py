@@ -1,3 +1,4 @@
+# Purpose: Deterministic directory walking with symlink rejection, path containment, size caps, and streaming SHA-256.
 """Filesystem security controls: path containment, symlink rejection, streaming SHA-256."""
 
 from __future__ import annotations

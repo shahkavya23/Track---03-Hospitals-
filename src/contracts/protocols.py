@@ -1,3 +1,4 @@
+# Purpose: Typed Python Protocol interfaces decoupling Member 1, Member 2, and Member 3 pipeline stages.
 """Stage protocols decoupling Member 1, Member 2, and Member 3 modules."""
 
 from __future__ import annotations

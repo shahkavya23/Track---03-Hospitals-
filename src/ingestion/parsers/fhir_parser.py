@@ -1,3 +1,4 @@
+# Purpose: Parses FHIR R4 Bundles/resources (`loc="doc"`), indexes internal references, and decodes text/JSON/XML attachments.
 """FHIR R4 JSON parser supporting Bundles, references, narratives, and attachments."""
 
 from __future__ import annotations

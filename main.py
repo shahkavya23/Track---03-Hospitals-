@@ -1,3 +1,4 @@
+# Purpose: Root CLI entrypoint (`python main.py --input ... --output ...`) that parses arguments and runs RakshaPipeline safely.
 """Official CLI entrypoint for RAKSHA (python main.py --input ... --output ...)."""
 
 from __future__ import annotations

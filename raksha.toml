@@ -1,3 +1,5 @@
+# Purpose: Official Yugaantar DevForge Track 3 runner manifest defining setup and offline CLI execution commands.
+
 [submission]
 name  = "raksha-team"
 setup = "pip install -r requirements.txt"

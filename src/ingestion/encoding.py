@@ -1,3 +1,4 @@
+# Purpose: Strips BOMs, rejects binary/truncated UTF-8 files, and normalizes legacy encodings to strict UTF-8.
 """Encoding sniffing, BOM removal, binary rejection, and strict UTF-8 normalization."""
 
 from __future__ import annotations
