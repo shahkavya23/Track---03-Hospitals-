@@ -1,0 +1,68 @@
+[
+  {
+    "seed": 1,
+    "profile": "tune",
+    "privacy": 93.333,
+    "pii_detection": 75.0,
+    "medical": 100.0,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 94.722
+  },
+  {
+    "seed": 2,
+    "profile": "tune",
+    "privacy": 95.667,
+    "pii_detection": 75.0,
+    "medical": 100.0,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 95.111
+  },
+  {
+    "seed": 3,
+    "profile": "tune",
+    "privacy": 93.667,
+    "pii_detection": 75.0,
+    "medical": 100.0,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 94.778
+  },
+  {
+    "seed": 4,
+    "profile": "holdout",
+    "privacy": 39.333,
+    "pii_detection": 74.932,
+    "medical": 66.667,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 60.155
+  },
+  {
+    "seed": 5,
+    "profile": "holdout",
+    "privacy": 37.667,
+    "pii_detection": 74.899,
+    "medical": 66.667,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 59.872
+  },
+  {
+    "seed": 6,
+    "profile": "holdout",
+    "privacy": 37.0,
+    "pii_detection": 74.899,
+    "medical": 66.667,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 59.761
+  }
+]
