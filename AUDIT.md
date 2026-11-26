@@ -2,6 +2,26 @@
 
 Status: migration required. Passing example tests does not establish the invariants below.
 
+## safe-3 checkpoint
+
+143 automated tests pass. Nested family fixture emits eight independent patient
+records; sanitized JSON pointers resolve after key renames; operator logins and
+school fields are tokenized. Single-token canonical names now participate in the
+run-wide name sweep. Singleton PSNs use content fingerprints; REC tokens include
+the source-relative-path namespace. A family regression compares output across
+changed TZ and working directory, excluding report timing/resources.
+
+Output diff versus safe-2: the supplied family fixture now passes the current
+publication gate instead of being quarantined. This is not a complete privacy
+certification: the gate covers detected identifiers, not every hidden identifier.
+
+Outstanding: full UDM coverage; transliteration/partial-name mention resolution
+with role ownership; complete date-format and relative-date handling; dataset-wide
+geography evidence; applied-event accounting and late-catch telemetry; safe output
+directory cleanup; scorer/generator/self-attack integration; process-level shuffled
+listing/hash-seed tests; encrypted spill implementation and 5x corpus benchmark.
+No late-catch count is claimed until an applied-event ledger records it.
+
 ## Additional coverage requested after approval
 
 | Area | Status and evidence |

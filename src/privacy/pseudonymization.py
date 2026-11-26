@@ -175,7 +175,9 @@ def _identity_payload(
         payload = [
             "raksha-identity-v1",
             "singleton-record",
-            encounter_values[0] if encounter_values else record.record_ref,
+            encounter_values[0] if encounter_values else hashlib.sha256(json.dumps(
+                record.original_structure, ensure_ascii=False, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest(),
         ]
 
     if payload is None:

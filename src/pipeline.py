@@ -129,6 +129,10 @@ class RakshaPipeline:
         assert self.serializer is not None
 
         sources: list[SourceFile] = self.ingestor.ingest_directory(input_dir)
+        sources.sort(key=lambda source: source.relative_path)
+        for source in sources:
+            for record in source.records:
+                record.field_metadata['record_namespace'] = source.relative_path
         all_records: list[PatientRecord] = [
             record for source in sources for record in source.records
         ]

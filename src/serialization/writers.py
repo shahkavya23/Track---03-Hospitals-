@@ -206,6 +206,13 @@ def write_json_source(source: SourceFile, target_path: Path) -> None:
         payload = copy.deepcopy(source.records[0].field_metadata['document'])
         for rec in source.records:
             payload = _apply_json_decisions(payload, rec)
+            if rec.pseudonym_id and not rec.field_metadata.get('metadata_only'):
+                located = _navigate_parent(payload, _split_pointer(rec.loc))
+                if located:
+                    parent, key = located
+                    subject = parent[key]
+                    if isinstance(subject, dict) and not _contains_pseudonym(subject, rec.pseudonym_id):
+                        subject['patient_id'] = rec.pseudonym_id
         # Binary payloads cannot be inspected by the text pipeline.
         def remove_binary(obj):
             if isinstance(obj, dict):
@@ -239,7 +246,9 @@ def write_json_source(source: SourceFile, target_path: Path) -> None:
                     rename_keys(item, old_path + '/' + str(idx), new_path + '/' + str(idx))
         rename_keys(payload)
         for rec in source.records:
-            rec.field_metadata['sanitized_loc'] = renames.get(rec.loc, rec.loc)
+            prefix = next((p for p in sorted(renames, key=len, reverse=True)
+                           if rec.loc == p or rec.loc.startswith(p + '/')), '')
+            rec.field_metadata['sanitized_loc'] = renames[prefix] + rec.loc[len(prefix):] if prefix else rec.loc
     elif container_type == "single_object":
         rec = source.records[0]
         obj = _apply_json_decisions(rec.original_structure, rec, base_prefix="")

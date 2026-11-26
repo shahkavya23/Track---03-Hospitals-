@@ -14,6 +14,7 @@ from src.contracts import PatientRecord, PrivacyDecision, SpanRole, TransformTyp
 from src.privacy.date_shift import derive_date_offset, shift_date_value
 from src.privacy.generalization import age_band
 from src.privacy.locations import hierarchy_outputs
+from src.detection.normalization.names import normalize_person_name
 
 
 _KINSHIP_ONLY = frozenset({
@@ -100,11 +101,11 @@ def sanitize_schema_label(label: str) -> str:
     return result
 
 
-def _record_token(secret: bytes, raw: str) -> str:
+def _record_token(secret: bytes, raw: str, namespace: str = '') -> str:
     normalized = unicodedata.normalize("NFKC", raw).upper()
     numeric_parts = re.findall(r"\d+", normalized)
     canonical = (numeric_parts[-1].lstrip("0") or "0") if numeric_parts else re.sub(r"[^A-Z0-9]", "", normalized)
-    digest = hmac.new(secret, b"raksha:v1:record-id\0" + canonical.encode(), hashlib.sha256).digest()
+    digest = hmac.new(secret, b"raksha:v1:record-id\0" + namespace.encode() + b'\0' + canonical.encode(), hashlib.sha256).digest()
     return "REC-" + base64.b32encode(digest[:6]).decode().rstrip("=")
 
 
@@ -247,7 +248,7 @@ def _record_indexes(records: Sequence[PatientRecord], secret_key: bytes) -> dict
         for node in rec.fields:
             if not node.raw_value or classify_field(node.header_key, [node.raw_value]) != "RECORD_ID":
                 continue
-            token = _record_token(secret_key, node.raw_value)
+            token = _record_token(secret_key, node.raw_value, rec.field_metadata.get('record_namespace', ''))
             canonical = re.sub(r"\s+", "", unicodedata.normalize("NFKC", node.raw_value).casefold())
             index[canonical] = token
             digits = re.findall(r"\d+", node.raw_value)
@@ -379,6 +380,12 @@ def _name_memory(records: Sequence[PatientRecord]) -> list[str]:
             raw = re.sub(r"(?i)^\s*(?:smt|shri|md|mohd|mr|mrs|ms)\.?\s+", "", raw).strip()
             if raw and not raw.casefold().startswith("unknown"):
                 names.append(raw)
+                canonical = normalize_person_name(raw).canonical_name
+                if canonical:
+                    names.append(canonical)
+                    parts = canonical.split()
+                    if parts and len(parts[0]) >= 4 and parts[0].casefold() not in _KINSHIP_ONLY:
+                        names.append(parts[0])
     return sorted(set(names), key=len, reverse=True)
 
 
@@ -452,6 +459,16 @@ def structure_aware_decisions(
                 continue
             role = classify_field(node.header_key, values_by_header.get(node.header_key, ())) if node.is_structured_key else "FREE_TEXT"
             path = node.field_path
+            if rec.field_metadata.get('metadata_only'):
+                if node.header_key.casefold() in {'login', 'machine', 'operator', 'username', 'host'}:
+                    decisions.append(_whole(rec, path, '[USERNAME]'))
+                    continue
+                if role == 'PATIENT_NAME':
+                    decisions.append(_whole(rec, path, '[RELATIVE]'))
+                    continue
+            if node.header_key.casefold() in {'school', 'occupation'}:
+                decisions.append(_whole(rec, path, '[' + node.header_key.upper() + ']'))
+                continue
             for locality, replacement in locality_map.items():
                 for mention in re.finditer(re.escape(locality), raw, re.IGNORECASE):
                     decisions.append(PrivacyDecision(rec.record_ref, path, mention.start(), mention.end(),
@@ -470,7 +487,7 @@ def structure_aware_decisions(
                 decisions.append(_whole(rec, path, _id_token(raw)))
                 continue
             if role == "RECORD_ID":
-                decisions.append(_whole(rec, path, _record_token(secret_key, raw), TransformType.PSEUDONYMIZE))
+                decisions.append(_whole(rec, path, _record_token(secret_key, raw, rec.field_metadata.get('record_namespace', '')), TransformType.PSEUDONYMIZE))
                 continue
             if role in {"AGE", "AGE_DOB"}:
                 years = [d.year for n in rec.fields
@@ -528,7 +545,7 @@ def structure_aware_decisions(
             for match in re.finditer(r"(?i)\b(?:IPD|OPD|UHID|MRN|SDH)\s*(?:NO\.?)?\s*[A-Z0-9/-]*\d[A-Z0-9/-]*", raw):
                 decisions.append(PrivacyDecision(rec.record_ref, path, match.start(), match.end(),
                                                  TransformType.PSEUDONYMIZE,
-                                                 _record_token(secret_key, match.group())))
+                                                 _record_token(secret_key, match.group(), rec.field_metadata.get('record_namespace', ''))))
 
             # Bare numeric tails are identifiers only near record-reference
             # language and only when the same file declared that encounter.
@@ -550,7 +567,7 @@ def structure_aware_decisions(
             word_matches = list(re.finditer(r"[A-Za-z][A-Za-z.']*", raw))
             for known in memory:
                 count = len(known.split())
-                if count < 2:
+                if count < 1:
                     continue
                 for pos in range(0, len(word_matches) - count + 1):
                     group = word_matches[pos : pos + count]
