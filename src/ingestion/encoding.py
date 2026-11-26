@@ -71,8 +71,15 @@ def decode_bytes_to_utf8(
             if _has_excessive_control_chars(text):
                 raise IngestionQuarantineError("binary content detected")
             return DecodedText(text=text.replace("\r\n", "\n").replace("\r", "\n"), encoding="utf-8")
-        except UnicodeDecodeError:
-            pass
+        except UnicodeDecodeError as exc:
+            # If valid multibyte UTF-8 text is cut off mid-character at EOF, quarantine
+            # instead of letting statistical guessing misread it as CJK/Shift-JIS.
+            if (
+                exc.reason == "unexpected end of data"
+                and exc.end == len(raw_bytes)
+                and any(byte >= 0x80 for byte in raw_bytes[: exc.start])
+            ):
+                raise IngestionQuarantineError("truncated utf-8 encoding") from exc
 
     # 4. Statistical charset detection via charset-normalizer.
     best = from_bytes(raw_bytes).best()
