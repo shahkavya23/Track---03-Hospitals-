@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+import tempfile
 import time
 import tracemalloc
 import unittest
@@ -12,6 +16,7 @@ from src.contracts import FieldNode, PatientRecord, SpanRole
 from src.detection import MultilingualPIIDetector
 from src.linkage.engine import ConservativeLinkageEngine
 from src.privacy import AdaptivePrivacyEngine
+from src.pipeline import RakshaPipeline
 from src.security.validation import validate_member3_state
 from src.serialization.span_applier import apply_decisions_to_field
 
@@ -101,6 +106,50 @@ class EndToEndAndMetricsTests(unittest.TestCase):
         self.assertIn("Dr. शर्मा", out_hi_doc)
         self.assertNotIn("मोहम्मद आरिफ", out_hi_doc)
         self.assertIn(rec_hi.pseudonym_id, out_hi_doc)
+
+    def test_default_pipeline_runs_real_stages_without_test_stubs(self) -> None:
+        """The public CLI pipeline must compose M1, M2, and M3 implementations."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            input_dir = root / "input"
+            output_dir = root / "output"
+            input_dir.mkdir()
+            (input_dir / "patient.csv").write_text(
+                "patient_name,phone,dob,abha,notes\n"
+                "Aarav Sen,9876543210,1990-05-12,12-3456-7890-1234,Dolo 650 BD x 5 days\n",
+                encoding="utf-8",
+            )
+
+            previous_secret = os.environ.get("RAKSHA_SECRET")
+            os.environ["RAKSHA_SECRET"] = "synthetic-pipeline-test-secret"
+            try:
+                metrics = RakshaPipeline().run(input_dir, output_dir)
+            finally:
+                if previous_secret is None:
+                    os.environ.pop("RAKSHA_SECRET", None)
+                else:
+                    os.environ["RAKSHA_SECRET"] = previous_secret
+
+            sanitized = (output_dir / "sanitized" / "patient.csv").read_text(
+                encoding="utf-8"
+            )
+            records = [
+                json.loads(line)
+                for line in (output_dir / "records.jsonl").read_text(
+                    encoding="utf-8"
+                ).splitlines()
+                if line.strip()
+            ]
+
+            self.assertEqual(metrics.records_processed, 1)
+            self.assertEqual(metrics.records_linked, 1)
+            self.assertEqual(len(records), 1)
+            self.assertTrue(records[0]["patient"].startswith("PSN-"))
+            self.assertIn(records[0]["patient"], sanitized)
+            self.assertNotIn("Aarav Sen", sanitized)
+            self.assertNotIn("9876543210", sanitized)
+            self.assertNotIn("12-3456-7890-1234", sanitized)
+            self.assertIn("Dolo 650 BD x 5 days", sanitized)
 
     def test_synthetic_multilingual_benchmark_metrics(self) -> None:
         # Synthetic labeled evaluation corpus across EN, HI, and Hinglish.

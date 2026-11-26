@@ -26,6 +26,10 @@ from src.contracts import (
     TransformType,
 )
 from src.ingestion import IngestionConfig, UniversalIngestor
+from src.clinical import ClinicalIntegrityGuard
+from src.detection import MultilingualPIIDetector
+from src.linkage.engine import ConservativeLinkageEngine
+from src.privacy import AdaptivePrivacyEngine
 from src.serialization import SafeOutputSerializer
 
 
@@ -67,10 +71,17 @@ class RakshaPipeline:
             )
             self.ingestor = UniversalIngestor(cfg)
 
-        self.detector = detector
-        self.clinical_guard = clinical_guard
-        self.linker = linker
-        self.privacy_engine = privacy_engine
+        default_guard = ClinicalIntegrityGuard()
+        self.clinical_guard = clinical_guard if clinical_guard is not None else default_guard
+        self.detector = (
+            detector
+            if detector is not None
+            else MultilingualPIIDetector(default_guard)
+        )
+        self.linker = linker if linker is not None else ConservativeLinkageEngine()
+        self.privacy_engine = (
+            privacy_engine if privacy_engine is not None else AdaptivePrivacyEngine()
+        )
         self.serializer = serializer if serializer is not None else SafeOutputSerializer()
 
     def run(self, input_dir: Path, output_dir: Path) -> AuditMetrics:

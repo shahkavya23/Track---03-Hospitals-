@@ -51,7 +51,7 @@ _NAME_SEQ = rf"(?:(?:{_LATIN_NAME_TOK}|{_DEVA_NAME_TOK})(?:\s+(?:{_LATIN_NAME_TO
 _CLINICIAN_RE = re.compile(
     rf"(?:(?<!\w)(?:[Dd]r\.?|डॉ\.?|डॉक्टर)\s+(?P<name>{_NAME_SEQ}))|"
     rf"(?:\b(?i:Consultant|Attending\s+(?:Doctor|Physician)|Referring\s+Doctor|Physician|Surgeon|Prescribed\s+by|Signed\s+by)\s*[:=-]?\s*"
-    rf"(?P<name2>(?:(?:[Dd]r\.?|डॉ\.?)\s+)?{_NAME_SEQ}))",
+    rf"(?P<title2>(?:[Dd]r\.?|डॉ\.?|डॉक्टर)\s+)?(?P<name2>{_NAME_SEQ}))",
     re.UNICODE,
 )
 
@@ -239,7 +239,13 @@ def detect_context_candidates(
     for m in _CLINICIAN_RE.finditer(norm):
         grp = "name" if m.group("name") else "name2"
         ns, ne = m.span(grp)
-        prefix_start = m.start() if grp == "name" else ns
+        # Keep an explicit clinician title in the protected staff span, but do not
+        # feed it to name normalization.  Capturing the optional title inside the
+        # name previously caused the generic name trimmer to reject the whole
+        # labeled phrase (for example, ``Referring Doctor: Dr. ...``).
+        prefix_start = m.start() if grp == "name" else (
+            m.start("title2") if m.group("title2") else ns
+        )
         add_name_match(
             ns, ne, "CLINICIAN_NAME", SpanRole.STAFF_OR_FACILITY, 0.96, "context_clinician",
             include_prefix_start=prefix_start,

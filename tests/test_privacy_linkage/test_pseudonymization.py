@@ -231,7 +231,7 @@ class PseudonymSafetyTests(unittest.TestCase):
 
 
 class PrivacyDecisionIntegrationTests(unittest.TestCase):
-    def test_only_patient_identity_spans_receive_pseudonym_decisions(self) -> None:
+    def test_direct_patient_identifiers_receive_pseudonym_decisions(self) -> None:
         record = _record("rec_1", ids=["ABHA|0001"])
         record.detections = [
             DetectionSpan(
@@ -271,11 +271,11 @@ class PrivacyDecisionIntegrationTests(unittest.TestCase):
             [record], [cluster], b"secret-alpha"
         )
 
-        self.assertEqual(len(decisions), 1)
-        self.assertEqual(decisions[0].transform_type, TransformType.PSEUDONYMIZE)
-        self.assertEqual(decisions[0].replacement_value, record.pseudonym_id)
-        self.assertEqual(decisions[0].field_path, "col:0")
-        self.assertNotIn("0001", repr(decisions[0]))
+        self.assertEqual(len(decisions), 2)
+        self.assertTrue(all(d.transform_type == TransformType.PSEUDONYMIZE for d in decisions))
+        self.assertTrue(all(d.replacement_value == record.pseudonym_id for d in decisions))
+        self.assertEqual({d.field_path for d in decisions}, {"col:0", "col:1"})
+        self.assertNotIn("0001", repr(decisions))
 
 
 if __name__ == "__main__":
