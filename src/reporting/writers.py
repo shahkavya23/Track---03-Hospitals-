@@ -23,7 +23,7 @@ def write_records_jsonl(sources: Sequence[SourceFile], output_dir: Path) -> Path
                 continue
             entry = {
                 "file": src.sanitized_relative_path,
-                "loc": record.loc,
+                "loc": record.field_metadata.get('sanitized_loc', record.loc),
                 "patient": record.pseudonym_id,
             }
             lines.append(json.dumps(entry, ensure_ascii=False))

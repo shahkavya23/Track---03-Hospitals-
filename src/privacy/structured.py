@@ -25,7 +25,7 @@ _KINSHIP_ONLY = frozenset({
 
 def _tokens(value: str) -> set[str]:
     value = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", value)
-    return {p for p in re.split(r"[^\w]+", value.casefold()) if p}
+    return {p for p in re.split(r"[\W_]+", value.casefold()) if p}
 
 
 def classify_field(header: str, values: Iterable[str] = ()) -> str:
@@ -39,8 +39,10 @@ def classify_field(header: str, values: Iterable[str] = ()) -> str:
         return "DEPT"
     if t & {"sex", "gender"}:
         return "SEX"
-    if t & {"age", "dob", "birth", "birthdate"}:
-        return "AGE_DOB" if t & {"dob", "birth", "birthdate"} else "AGE"
+    if t & {'dob', 'birth', 'birthdate'}:
+        return 'DOB'
+    if 'age' in t:
+        return 'AGE'
     if t & {"doa", "dod", "date", "admission", "discharge", "datetime", "timestamp"}:
         return "DATETIME" if t & {"datetime", "timestamp"} else "DATE"
     if t & {"address", "addr", "residence", "locality", "village", "town", "city"}:
@@ -120,14 +122,25 @@ def _parse_age(raw: str) -> float | None:
         return (float(m.group(1)) + (0.5 if "1/2" in m.group(0) else 0)) * 10 if m else None
     if re.search(r"\bdob\b|birth", s):
         m = re.search(r"(?:19|20)\d{2}", s)
-        return float(datetime.now().year - int(m.group())) if m else None
+        return None  # A birth year needs an explicit encounter reference year.
     m = re.search(r"\d+(?:\.\d+)?", s)
     if not m:
         return None
     return float(m.group())
 
 
-def generalize_age(raw: str, width: int = 5, top_code: int = 90) -> str:
+def generalize_age(raw: str, width: int = 5, top_code: int = 90, reference_year: int | None = None) -> str:
+    birth_year = re.fullmatch(r'(?i)\s*DOB\s+(\d{4})\s*', raw)
+    if birth_year and reference_year is not None:
+        raw = str(reference_year - int(birth_year.group(1)))
+    age_range = re.fullmatch(r'\s*(\d{1,3})\s*[-–]\s*(\d{1,3})\s*', raw)
+    if age_range:
+        low, high = map(int, age_range.groups())
+        if low > high or high > 130:
+            return '[AGE]'
+        if low >= top_code:
+            return f'{top_code}+'
+        return f'{low // width * width}-{(high // width + 1) * width - 1}'
     age = _parse_age(raw)
     if age is None or age < 0 or age > 130:
         return "[AGE]"
@@ -299,7 +312,9 @@ def _safe_date_offsets(
     records: Sequence[PatientRecord], secret_key: bytes, anchors: dict[str, str], max_days: int
 ) -> dict[str, int]:
     """Derive coherent offsets and deterministically clamp them before source/run dates."""
-    run_cap = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    input_dates = [parsed for rec in records for node in rec.fields
+                   if (parsed := _date_for_limit(node.raw_value)) is not None]
+    run_cap = max(input_dates, default=datetime(2000, 1, 1))
     source_caps: dict[str, datetime] = {}
     for rec in records:
         if not rec.field_metadata.get("is_footer_row"):
@@ -309,7 +324,7 @@ def _safe_date_offsets(
         if found:
             parsed = _date_for_limit(found.group(1))
             if parsed:
-                source_caps[rec.source_ref] = min(run_cap, parsed)
+                source_caps[rec.source_ref] = parsed
 
     latest_by_anchor: dict[str, datetime] = {}
     cap_by_anchor: dict[str, datetime] = {}
@@ -458,7 +473,11 @@ def structure_aware_decisions(
                 decisions.append(_whole(rec, path, _record_token(secret_key, raw), TransformType.PSEUDONYMIZE))
                 continue
             if role in {"AGE", "AGE_DOB"}:
-                decisions.append(_whole(rec, path, generalize_age(raw, age_width, age_top_code), TransformType.GENERALIZE))
+                years = [d.year for n in rec.fields
+                         if classify_field(n.header_key) in {'DATE', 'DATETIME'}
+                         and (d := _date_for_limit(n.raw_value)) is not None]
+                decisions.append(_whole(rec, path, generalize_age(raw, age_width, age_top_code,
+                                                               min(years) if years else None), TransformType.GENERALIZE))
                 continue
             if role == "ADDRESS":
                 decisions.append(_whole(
@@ -467,7 +486,7 @@ def structure_aware_decisions(
                     TransformType.GENERALIZE,
                 ))
                 continue
-            if role in {"DATE", "DATETIME"}:
+            if role in {"DATE", "DATETIME", "DOB"}:
                 try:
                     shifted = shift_any_date(raw, date_offset, month_first=month_first)
                 except ValueError:

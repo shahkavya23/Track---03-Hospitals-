@@ -8,6 +8,9 @@ import copy
 import csv
 import json
 import re
+import os
+import hmac
+import hashlib
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -199,7 +202,45 @@ def write_json_source(source: SourceFile, target_path: Path) -> None:
 
     container_type = source.records[0].field_metadata.get("container_type", "single_object")
 
-    if container_type == "single_object":
+    if container_type == 'scoped_tree':
+        payload = copy.deepcopy(source.records[0].field_metadata['document'])
+        for rec in source.records:
+            payload = _apply_json_decisions(payload, rec)
+        # Binary payloads cannot be inspected by the text pipeline.
+        def remove_binary(obj):
+            if isinstance(obj, dict):
+                for key in list(obj):
+                    if key.casefold() in {'bytes_b64', 'binary', 'image_data'}:
+                        obj[key] = None
+                    else:
+                        remove_binary(obj[key])
+            elif isinstance(obj, list):
+                for item in obj:
+                    remove_binary(item)
+        remove_binary(payload)
+        renames = {}
+        def rename_keys(obj, old_path='', new_path=''):
+            if isinstance(obj, dict):
+                for key in list(obj):
+                    # Dynamic identifiers, human-readable personal keys and
+                    # attachment filenames are opaque schema data, not labels.
+                    dynamic = bool(re.search(r'[\s.\\-]', key))
+                    new_key = ('KEY-' + hmac.new(
+                        os.environ['RAKSHA_SECRET'].encode(), b'json-key\0' + key.encode(),
+                        hashlib.sha256).hexdigest()[:20]) if dynamic else key
+                    old_pointer = old_path + '/' + key.replace('~', '~0').replace('/', '~1')
+                    new_pointer = new_path + '/' + new_key.replace('~', '~0').replace('/', '~1')
+                    renames[old_pointer] = new_pointer
+                    value = obj.pop(key) if new_key != key else obj[key]
+                    obj[new_key] = value
+                    rename_keys(value, old_pointer, new_pointer)
+            elif isinstance(obj, list):
+                for idx, item in enumerate(obj):
+                    rename_keys(item, old_path + '/' + str(idx), new_path + '/' + str(idx))
+        rename_keys(payload)
+        for rec in source.records:
+            rec.field_metadata['sanitized_loc'] = renames.get(rec.loc, rec.loc)
+    elif container_type == "single_object":
         rec = source.records[0]
         obj = _apply_json_decisions(rec.original_structure, rec, base_prefix="")
         if (

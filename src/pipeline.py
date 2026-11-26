@@ -150,7 +150,7 @@ class RakshaPipeline:
                 1 for span in record.detections if span.role != SpanRole.CLINICAL_PROTECTED
             )
 
-        _, clusters = self.linker.link_records(all_records)
+        _, clusters = self.linker.link_records(export_records)
         decisions = self.privacy_engine.transform(all_records, clusters, secret_key)
 
         decision_by_record: dict[str, list] = {}
