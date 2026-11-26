@@ -79,6 +79,14 @@ def apply_decisions_to_field(
     if not span_decisions:
         return raw_value, blocked
 
+    # Prefer larger enclosing spans over nested sub-spans so that full redactions (e.g. [ADDRESS])
+    # are not skipped due to reverse-offset collision with smaller inner spans.
+    filtered_spans = []
+    for d in sorted(span_decisions, key=lambda x: ((x.end or 0) - (x.start or 0)), reverse=True):
+        if not any(other.start <= d.start and other.end >= d.end for other in filtered_spans):
+            filtered_spans.append(d)
+    span_decisions = filtered_spans
+
     span_decisions.sort(key=lambda d: (d.start or 0, d.end or 0), reverse=True)
     result = raw_value
     last_applied_start = len(raw_value) + 1
