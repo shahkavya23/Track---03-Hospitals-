@@ -24,7 +24,24 @@ GLOBAL_ID_PRIORITY = ("ABHA", "AADHAAR", "PAN")
 LOCAL_ID_PRIORITY = ("UHID", "MRN", "INSURANCE")
 DEFAULT_PSEUDONYM_BYTES = 13  # 104 bits before Base32 encoding
 DEFAULT_PATIENT_CATEGORIES = frozenset(
-    {"PATIENT_NAME", "PERSON_NAME", "PATIENT_IDENTIFIER"}
+    {
+        # Direct identity-bearing values are replaced by the cluster token.
+        # Staff/facility names are intentionally excluded: they are not patient
+        # identity and must remain clinically useful context.
+        "PATIENT_NAME",
+        "PERSON_NAME",
+        "RELATIVE_NAME",
+        "PATIENT_IDENTIFIER",
+        "PHONE",
+        "EMAIL",
+        "AADHAAR",
+        "ABHA",
+        "PAN",
+        "UHID",
+        "MRN",
+        "INSURANCE_ID",
+        "ADDRESS",
+    }
 )
 
 
