@@ -68,6 +68,14 @@ pytest
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
+### Household date shifting
+
+`privacy.household_shift` in `config/policy.yaml` keeps explicitly related, same-day
+household encounters on the same shifted date. This preserves clinically meaningful
+statements such as “admitted together,” but it also retains a limited relationship
+between those records. Set it to `false` when maximum unlinkability is more important
+than cross-record temporal coherence.
+
 ---
 
 ## Team Ownership

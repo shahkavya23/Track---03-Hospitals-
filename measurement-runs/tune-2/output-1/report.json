@@ -1,0 +1,66 @@
+{
+  "files": [
+    {
+      "input_sha256": "8dcc7e601606217f3b754766511182a916b17e9a26a94c9d887104eba92e9bb2",
+      "output": null,
+      "status": "quarantined",
+      "reason": "unsupported format"
+    },
+    {
+      "input_sha256": "021fb596db81e6d02bf3d2586ee3981fe519f275c0ac9ca76bbcf2ebb4097d96",
+      "output": null,
+      "status": "quarantined",
+      "reason": "malformed or truncated json"
+    },
+    {
+      "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": null,
+      "status": "quarantined",
+      "reason": "empty file"
+    },
+    {
+      "input_sha256": "ca4e37affb9c994b5a8249318b3816709242780e41a40d9125b277b5d2fdc16e",
+      "output": "sanitized/hospital_0.csv",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "f0bda08f70e566eae8b660229c99f148b8612d14aaf82a849afd855bae258914",
+      "output": "sanitized/hospital_1.csv",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "4ae8605ba6263614e6d8221bd17802413053269f1ad516ec26a5d82d6dc8f624",
+      "output": "sanitized/hospital_2.csv",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "6e568e1f67fba258184c78181539e5e8fdee447e49bb706fc0ea34fbf12336a5",
+      "output": null,
+      "status": "quarantined",
+      "reason": "unsupported format"
+    }
+  ],
+  "counts": {
+    "files_total": 7,
+    "files_sanitized": 3,
+    "files_quarantined": 4,
+    "records_processed": 759,
+    "identifiers_detected": 6831,
+    "records_linked": 759,
+    "records_generalized": 759,
+    "records_suppressed": 0,
+    "records_quarantined": 0
+  },
+  "timing": {
+    "seconds": 4.514
+  },
+  "resources": {
+    "peak_rss_mb": 41.0
+  },
+  "substitutions_by_type": {
+    "AADHAAR": 759,
+    "PATIENT": 756,
+    "PHONE": 1518,
+    "PSN": 762
+  }
+}

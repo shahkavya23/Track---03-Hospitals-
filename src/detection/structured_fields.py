@@ -456,6 +456,22 @@ def analyze_structured_field(
         (tok_set & _PATIENT_TOKENS) and has_id_token
     ) or (tok_set == {"id"} and fhir_hint == "PATIENT"):
         norm_val = normalize_with_offset_map(raw).normalized.strip().upper()
+        if (tok_set & {"ipd", "opd", "reg", "regn", "registration"}) and not (
+            tok_set & {"uhid", "mrn", "mr", "insurance", "policy", "tpa"}
+        ):
+            spans.append(
+                DetectionSpan(
+                    record_ref=record.record_ref,
+                    field_path=node.field_path,
+                    start=lead,
+                    end=trail,
+                    category="CASE_NO",
+                    role=SpanRole.DIRECT_PII,
+                    confidence=0.98,
+                    detector_source="structured_encounter_id",
+                )
+            )
+            return spans
         if tok_set & _MRN_TOKENS:
             cat, id_type = "MRN", "MRN"
         elif tok_set & _INSURANCE_TOKENS:
@@ -480,6 +496,10 @@ def analyze_structured_field(
         return spans
 
     if (tok_set & _ADDRESS_TOKENS) or ("/address/" in fp_lower and bool(tok_set & {"line", "text"})):
+        coarse_geo = re.sub(r"(?i)\b(?:h\.?\s*no\.?|house|ward|mohalla)\b[^,;\n]*[,;\n]?", "", raw)
+        coarse_geo = re.sub(r"\b\d{6}\b", "", coarse_geo).strip(" ,;-\n")
+        if coarse_geo:
+            _add_attr(record, "geo_keys", normalize_with_offset_map(coarse_geo).normalized.casefold())
         spans.append(
             DetectionSpan(
                 record_ref=record.record_ref,

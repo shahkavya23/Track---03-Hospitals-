@@ -25,6 +25,8 @@ def _record(
     birth_years: list[str] | None = None,
     relative_name_keys: list[str] | None = None,
     geo_keys: list[str] | None = None,
+    genders: list[str] | None = None,
+    ages: list[str] | None = None,
 ) -> PatientRecord:
     return PatientRecord(
         record_ref=record_ref,
@@ -40,8 +42,38 @@ def _record(
             "birth_years": birth_years or [],
             "relative_name_keys": relative_name_keys or [],
             "geo_keys": geo_keys or [],
+            "genders": genders or [],
+            "ages": ages or [],
         },
     )
+
+
+class HouseholdNonMergeConstraintTests(unittest.TestCase):
+    def test_different_sex_is_hard_non_match(self) -> None:
+        left = _record("rec_1", ids=[], name_keys=["same"], genders=["F"])
+        right = _record("rec_2", ids=[], name_keys=["same"], genders=["M"])
+        self.assertEqual(match_pair(left, right).evidence_categories, ("CONFLICT_SEX",))
+
+    def test_large_age_gap_is_hard_non_match(self) -> None:
+        left = _record("rec_1", ids=[], name_keys=["same"], ages=["6"])
+        right = _record("rec_2", ids=[], name_keys=["same"], ages=["35"])
+        self.assertEqual(match_pair(left, right).evidence_categories, ("CONFLICT_AGE",))
+
+    def test_stated_parent_or_spouse_relation_prevents_merge(self) -> None:
+        left = _record("rec_1", ids=[], name_keys=["child"], relative_name_keys=["parent"])
+        right = _record("rec_2", ids=[], name_keys=["parent"], relative_name_keys=["child"])
+        self.assertEqual(match_pair(left, right).evidence_categories, ("STATED_FAMILY_RELATION",))
+
+    def test_twins_with_distinct_names_do_not_merge(self) -> None:
+        left = _record(
+            "rec_1", ids=[], name_keys=["twin-a"], relative_name_keys=["mother"],
+            dobs=["2024-01-01"],
+        )
+        right = _record(
+            "rec_2", ids=[], name_keys=["twin-b"], relative_name_keys=["mother"],
+            dobs=["2024-01-01"],
+        )
+        self.assertEqual(match_pair(left, right).evidence_categories, ("POSSIBLE_TWINS",))
 
 
 class StrongIdentifierMatchingTests(unittest.TestCase):
@@ -265,8 +297,8 @@ class SupportingEvidenceMatchingTests(unittest.TestCase):
                 record_ref_a="rec_1",
                 record_ref_b="rec_2",
                 decision=LinkageVerdict.ABSTAIN,
-                score=0.4,
-                evidence_categories=("EXACT_PHONE",),
+                score=0.0,
+                evidence_categories=(),
             ),
         )
 

@@ -30,17 +30,6 @@ DEFAULT_PATIENT_CATEGORIES = frozenset(
         # identity and must remain clinically useful context.
         "PATIENT_NAME",
         "PERSON_NAME",
-        "RELATIVE_NAME",
-        "PATIENT_IDENTIFIER",
-        "PHONE",
-        "EMAIL",
-        "AADHAAR",
-        "ABHA",
-        "PAN",
-        "UHID",
-        "MRN",
-        "INSURANCE_ID",
-        "ADDRESS",
     }
 )
 
@@ -159,6 +148,38 @@ def _identity_payload(
             min(geo_keys),
         ]
 
+    # A multi-record cluster created from independent supporting evidence needs
+    # a stable anchor even when no single government identifier is present.
+    if payload is None and len(cluster.member_record_refs) > 1 and name_keys and phones and geo_keys:
+        payload = [
+            "raksha-identity-v1",
+            "corroborated-cluster",
+            min(name_keys),
+            min(phones),
+            min(geo_keys),
+        ]
+
+    # A non-ambiguous singleton is still a real patient.  Prefer its encounter
+    # number as the stable anchor; otherwise use the deterministic record ref.
+    if payload is None and len(cluster.member_record_refs) == 1:
+        record = records_by_ref[cluster.member_record_refs[0]]
+        encounter_values = sorted({
+            field.raw_value.strip()
+            for field in record.fields
+            if field.raw_value.strip()
+            and any(
+                span.field_path == field.field_path and span.category.upper() == "CASE_NO"
+                for span in record.detections
+            )
+        })
+        payload = [
+            "raksha-identity-v1",
+            "singleton-record",
+            encounter_values[0] if encounter_values else hashlib.sha256(json.dumps(
+                record.original_structure, ensure_ascii=False, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest(),
+        ]
+
     if payload is None:
         return ResolutionStatus.UNRESOLVED, None
     canonical = json.dumps(
@@ -207,11 +228,14 @@ def assign_cluster_pseudonyms(
             claimed_records.add(record_ref)
             records_by_ref[record_ref].cluster_ref = cluster.cluster_ref
 
-        if cluster.resolution_status != ResolutionStatus.RESOLVED:
-            if cluster.resolution_status == ResolutionStatus.CONFLICT:
-                conflict_clusters += 1
-            else:
-                unresolved_clusters += 1
+        if cluster.resolution_status == ResolutionStatus.CONFLICT:
+            conflict_clusters += 1
+            continue
+        if cluster.resolution_status == ResolutionStatus.UNRESOLVED and any(
+            records_by_ref[record_ref].field_metadata.get("linkage_null_reason")
+            for record_ref in cluster.member_record_refs
+        ):
+            unresolved_clusters += 1
             continue
 
         identity_status, payload = _identity_payload(cluster, records_by_ref)

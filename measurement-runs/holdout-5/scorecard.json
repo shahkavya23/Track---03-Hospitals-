@@ -1,0 +1,46 @@
+{
+  "absolute_date_token_rate": 0.0,
+  "age_truthfulness": 0.0,
+  "attack_k_under_5_pct": 100.0,
+  "attack_unique_pct": 62.33333333333333,
+  "canary_count": 1,
+  "canary_penalty": 20,
+  "categories": {
+    "identity": 100.0,
+    "medical": 66.667,
+    "pii_detection": 74.899,
+    "privacy": 37.667,
+    "speed_reliability": 100.0,
+    "validity": 100.0
+  },
+  "interval_exactness": 1.0,
+  "limitations": [
+    "CSV-only structural and interval scoring",
+    "FHIR schema validator not installed",
+    "attack omits admission month and LOS until independent date decoding is available",
+    "shift-inference, raw-copy penalties, event-count validation and null reasons unimplemented"
+  ],
+  "missed_links": 0,
+  "null_or_missing_rate": 0.0,
+  "pairwise_f1": 1.0,
+  "pairwise_precision": 1.0,
+  "pairwise_recall": 1.0,
+  "pii_recall": {
+    "script:Latin": 0.7489905787348586,
+    "surface:cell": 0.7489905787348586,
+    "type:ABHA": 1.0,
+    "type:LOCALITY": 0.0,
+    "type:PATIENT": 0.9959623149394348,
+    "type:PHONE": 1.0
+  },
+  "protected_recall": 1.0,
+  "resources": {
+    "peak_rss_mb": 39.52
+  },
+  "runtime": {
+    "seconds": 4.592
+  },
+  "total": 59.872,
+  "tune_failures": [],
+  "wrong_merges": 0
+}

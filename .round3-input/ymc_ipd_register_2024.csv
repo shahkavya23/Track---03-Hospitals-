@@ -1,0 +1,18 @@
+IPD#,Pt Name (as per Aadhaar),Age,Sex,Guardian / C/O,Address,Contact,ID Proof,DOA,DOD,Dept,Provisional Dx,Treating Doctor,Remarks (verified by Sr. Kavita 9935 112 004)
+YMC/IPD/24/0918,Smt. Kamla Devi urf Kallo,"4 1/2 decade (approx 45)",F,W/o Om Prakash Tiwari,"Mohalla Purani Bazar
+Ward No. 7, Sonpur",9935-112-004,Aadhaar 2241 8890 1173,02/01/2024,09/01/2024,Medicine,Hansen's disease (lepromatous) — on MDT,Dr. Wilson Thomas,Pt requests diagnosis NOT be told to family
+YMC/IPD/24/0931,Ravi Tiwari @ Pappu,32Y,M,C/O Ramesh Tiwari (bhai),"Purani Bazar, Sonpur",+919935112004,DL UP71 20190034412,2024-01-14,2024-01-14,Emergency,Organophosphate poisoning (intentional?) — MLC 009/24,Dr. R. C. Tiwari,LAMA same day. No relation to Dr. Tiwari.
+YMC/IPD/24/1007,छोटू (असली नाम नहीं पता),~10 yrs,M,"Guardian: Nani (naam nahi bataya)",Railway station platform 2,,,26-01-2024,,Paediatrics,Severe acute malnutrition,Dr. Kiran Bala,Child Welfare Committee informed. Photo taken for CWC.
+YMC/IPD/24/1022,UNKNOWN MALE ~40 yrs (brought by 108),40,M,Brought by ambulance 108 — EMT Sanjay Maurya,"Found near Bhitauli canal",,Tattoo 'OM' left hand; gold tooth upper left,1706745600,1707091200,Surgery,"Head injury, GCS 8/15",Dr. Farhan Siddiqui,Unclaimed. Police PS Kachhwa GD 112.
+YMC/IPD/24/1100,Md Arif Kureshi,52,M,s/o A. Rasheed,"Qazi Tola Sonpur 271304",98390-14427,ABHA 91-4417-2206-8853,11-Mar-24,14-Mar-24,Cardiology,"Hypertensive urgency, LVH",Dr. Neha Saxena,Old pt of SDH (UHID SDH/24/001187)
+YMC/IPD/24/1142,Imran Khan,27,M,S/o Salim Khan,"H.No. 4/112, Kachhwa Khurd",6394 228 107,PAN BXKPK7731M,2024-03-30,2024-04-02,Orthopaedics,# shaft femur (R) — cricket injury,Dr. Ramesh Chandra Tiwari,Not the cricketer :)
+YMC/IPD/24/1189,Gita Kumari,6 mahine,F,D/o Sita Ram Verma,"Vill. Sitapur Majhgawan, 271870",7518 330 902,,04/05/2024,04/19/2024,Paediatrics,Down syndrome with VSD; Wilson's disease ruled out,Dr. Kiran Bala,Date format from referring PHC = MM/DD
+YMC/IPD/24/1190,Sita Ram Verma,DOB 1977,M,Self,"Vill. Sitapur Majhgawan, 271870",7518 330 902,Aadhaar 7715 3302 9021 4,05-04-2024,06-04-2024,Medicine,Bell's palsy (L),Dr. Neha Saxena,Father of IPD 1189. Aadhaar has 13 digits (typo at registration)
+YMC/IPD/24/1201,Meera Devi,47,F,W/o Rajan,"Bhitauli",94506 61108,,15/09/2024,17/09/2024,Medicine,Post-dengue weakness; Plt 1,46,000,Dr. Neha Saxena,
+YMC/IPD/24/1202,Meera Devi,47,F,W/o Rajan,"Bhitauli",9450661108,,15/09/2024,17/09/2024,Medicine,Post-dengue weakness; Plt 146000,Dr. Neha Saxena,DUPLICATE ENTRY — ignore 1201
+YMC/IPD/24/1250,Faiz Ahmed,35Y 3M,M,W/o? — (entry error) Husband of Shabnam Bano,"Qazi Tola, Sonpur",9839014427,,2024-10-02T08:15:00Z,2024-10-02T20:30:00Z,Emergency,Acute asthma; Addison's disease K/C/O on Tab Hydrocortisone 20 mg 1-0-1,Dr. Farhan Siddiqui,Phone same as Arif Qureshi?? neighbour's phone used
+YMC/IPD/24/1251,Shabnam Bano,31,F,W/o Faiz Ahmed,"Qazi Tola, Sonpur",9839014427,,2024-10-02,2024-10-02,OBG,Threatened abortion 10 wks; Guillain-Barré syndrome H/o (2019),Dr. Kiran Bala,Husband admitted same day (IPD 1250)
+YMC/IPD/24/1300,Parvati,102,F,"Self (widow of late Shri Bhagwan Din)","Sitapur Majhgawan",,,30-11-2024,,Medicine,Pneumonia; oldest patient of the year,Dr. R. C. Tiwari,"Same family as Ram Prakash Bihari (SDH/24/000041)?"
+YMC/IPD/24/1301,"Raju ""Gudda"" Yadav",9,M,"S/o Rajan Yadav, Kachhwa Khurd",Kachhwa Khurd,7007255813,,01-12-2024,03-12-2024,Paediatrics,Febrile seizure; Inj Midazolam 0.2 mg/kg stat,Dr. Kiran Bala,Elder brother of SNCU baby (SDH/24/001343)
+,,,,,,,,,,,,,
+"TOTAL: 14 rows (13 unique)",Printed by: ymc-his\kavita.s on 2024-12-05 09:12 from 10.0.4.17,,,,,,,,,,,,

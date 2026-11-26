@@ -30,6 +30,16 @@ def _overlaps_clinical(
     return any(start < span.end and end > span.start for span in clinical_spans)
 
 
+def _hard_privacy_replacement(value: str | None) -> bool:
+    """Typed identifiers take precedence even inside a clinically protected field."""
+    return value in {
+        "[PATIENT]", "[RELATIVE]", "[STAFF]", "[PHONE]", "[AADHAAR]", "[PAN]",
+        "[ABHA]", "[DL]", "[EMAIL]", "[IP]", "[USERNAME]", "[CASE_NO]",
+        "[ID_MARK]", "[ADDRESS]", "[IDENTITY_HINT]",
+        "[DATE]",
+    }
+
+
 def apply_decisions_to_field(
     raw_value: str,
     record: PatientRecord,
@@ -77,7 +87,12 @@ def apply_decisions_to_field(
         assert dec.start is not None and dec.end is not None
         if dec.start < 0 or dec.end > len(raw_value) or dec.start > dec.end:
             continue
-        if _overlaps_clinical(clinical_spans, dec.start, dec.end):
+        if (
+            _overlaps_clinical(clinical_spans, dec.start, dec.end)
+            and dec.transform_type != TransformType.DATE_SHIFT
+            and dec.replacement_value != ""
+            and not _hard_privacy_replacement(dec.replacement_value)
+        ):
             blocked += 1
             continue
         # Guard against overlapping/duplicate span edits corrupting offsets.

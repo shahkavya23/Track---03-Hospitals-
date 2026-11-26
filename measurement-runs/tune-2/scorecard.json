@@ -1,0 +1,117 @@
+{
+  "absolute_date_token_rate": 0.0,
+  "age_truthfulness": 1.0,
+  "attack_k_under_5_pct": 69.66666666666667,
+  "attack_unique_pct": 4.333333333333334,
+  "canary_count": 0,
+  "canary_penalty": 0,
+  "categories": {
+    "identity": 100.0,
+    "medical": 100.0,
+    "pii_detection": 75.0,
+    "privacy": 95.667,
+    "speed_reliability": 100.0,
+    "validity": 100.0
+  },
+  "interval_exactness": 1.0,
+  "limitations": [
+    "CSV-only structural and interval scoring",
+    "FHIR schema validator not installed",
+    "attack omits admission month and LOS until independent date decoding is available",
+    "shift-inference, raw-copy penalties, event-count validation and null reasons unimplemented"
+  ],
+  "missed_links": 0,
+  "null_or_missing_rate": 0.0,
+  "pairwise_f1": 1.0,
+  "pairwise_precision": 1.0,
+  "pairwise_recall": 1.0,
+  "pii_recall": {
+    "script:Latin": 0.75,
+    "surface:cell": 0.75,
+    "type:ABHA": 1.0,
+    "type:LOCALITY": 0.0,
+    "type:PATIENT": 1.0,
+    "type:PHONE": 1.0
+  },
+  "protected_recall": 1.0,
+  "resources": {
+    "peak_rss_mb": 41.11
+  },
+  "runtime": {
+    "seconds": 5.279
+  },
+  "total": 95.111,
+  "tune_failures": [
+    {
+      "file": "hospital_1.csv",
+      "loc": "row:0",
+      "script": "Latin",
+      "surface": "cell",
+      "type": "LOCALITY"
+    },
+    {
+      "file": "hospital_0.csv",
+      "loc": "row:0",
+      "script": "Latin",
+      "surface": "cell",
+      "type": "LOCALITY"
+    },
+    {
+      "file": "hospital_2.csv",
+      "loc": "row:0",
+      "script": "Latin",
+      "surface": "cell",
+      "type": "LOCALITY"
+    },
+    {
+      "file": "hospital_2.csv",
+      "loc": "row:1",
+      "script": "Latin",
+      "surface": "cell",
+      "type": "LOCALITY"
+    },
+    {
+      "file": "hospital_1.csv",
+      "loc": "row:1",
+      "script": "Latin",
+      "surface": "cell",
+      "type": "LOCALITY"
+    },
+    {
+      "file": "hospital_0.csv",
+      "loc": "row:1",
+      "script": "Latin",
+      "surface": "cell",
+      "type": "LOCALITY"
+    },
+    {
+      "file": "hospital_2.csv",
+      "loc": "row:2",
+      "script": "Latin",
+      "surface": "cell",
+      "type": "LOCALITY"
+    },
+    {
+      "file": "hospital_0.csv",
+      "loc": "row:2",
+      "script": "Latin",
+      "surface": "cell",
+      "type": "LOCALITY"
+    },
+    {
+      "file": "hospital_1.csv",
+      "loc": "row:2",
+      "script": "Latin",
+      "surface": "cell",
+      "type": "LOCALITY"
+    },
+    {
+      "file": "hospital_2.csv",
+      "loc": "row:3",
+      "script": "Latin",
+      "surface": "cell",
+      "type": "LOCALITY"
+    }
+  ],
+  "wrong_merges": 0
+}

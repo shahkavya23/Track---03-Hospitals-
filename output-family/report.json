@@ -1,0 +1,35 @@
+{
+  "files": [
+    {
+      "input_sha256": "314ad25f1109b00b9db1423e1f1c272a830521c4ca37a24c59a5ec2e26a363ff",
+      "output": "sanitized/family_export.json",
+      "status": "sanitized"
+    }
+  ],
+  "counts": {
+    "files_total": 1,
+    "files_sanitized": 1,
+    "files_quarantined": 0,
+    "records_processed": 1,
+    "identifiers_detected": 32,
+    "records_linked": 1,
+    "records_generalized": 1,
+    "records_suppressed": 0,
+    "records_quarantined": 0
+  },
+  "timing": {
+    "seconds": 0.151
+  },
+  "resources": {
+    "peak_rss_mb": 29.92
+  },
+  "substitutions_by_type": {
+    "ADDRESS": 3,
+    "CASE_NO": 1,
+    "DATE": 4,
+    "IDENTITY_HINT": 1,
+    "PHONE": 3,
+    "PSN": 15,
+    "USERNAME": 1
+  }
+}

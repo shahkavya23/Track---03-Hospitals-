@@ -19,9 +19,11 @@ def write_records_jsonl(sources: Sequence[SourceFile], output_dir: Path) -> Path
         if src.parse_status != ParseStatus.PARSED or src.sanitized_relative_path is None:
             continue
         for record in src.records:
+            if record.field_metadata.get("is_empty_row") or record.field_metadata.get("is_footer_row"):
+                continue
             entry = {
                 "file": src.sanitized_relative_path,
-                "loc": record.loc,
+                "loc": record.field_metadata.get('sanitized_loc', record.loc),
                 "patient": record.pseudonym_id,
             }
             lines.append(json.dumps(entry, ensure_ascii=False))

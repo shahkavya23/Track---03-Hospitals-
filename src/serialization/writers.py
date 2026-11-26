@@ -7,6 +7,10 @@ import base64
 import copy
 import csv
 import json
+import re
+import os
+import hmac
+import hashlib
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -148,7 +152,14 @@ def write_tabular_source(source: SourceFile, target_path: Path) -> None:
     first_struct = source.records[0].original_structure
     delimiter = "\t" if source.format == FileFormat.TSV else str(first_struct.get("delimiter", ","))
     orig_headers: list[str] = list(first_struct["headers"])
-    out_headers = list(orig_headers)
+    out_headers = [
+        re.sub(
+            r"(?i)(verified\s+by|printed\s+by|exported\s+by|typed\s+by)\s+(?:Sr\.?\s*)?[A-Z][\w.-]*(?:\s+[A-Z][\w.-]*){0,2}",
+            r"\1 [STAFF]",
+            re.sub(r"(?<!\d)(?:\+?\d[\d\s().-]{7,}\d)(?!\d)", "[PHONE]", h),
+        )
+        for h in orig_headers
+    ]
 
     # Apply header-level PII renames if present (`@header:<idx>` or `@header:<name>`).
     for rec in source.records:
@@ -164,8 +175,6 @@ def write_tabular_source(source: SourceFile, target_path: Path) -> None:
                         out_headers[idx] = dec.replacement_value
 
     sanitized_rows: list[list[str]] = []
-    needs_psn_column = False
-
     for rec in source.records:
         cells = list(rec.original_structure["cells"])
         new_cells: list[str] = []
@@ -177,14 +186,7 @@ def write_tabular_source(source: SourceFile, target_path: Path) -> None:
             updated, _ = apply_decisions_to_field(cell, rec, fpath)
             new_cells.append(updated)
 
-        if rec.pseudonym_id is not None and rec.pseudonym_id not in new_cells:
-            needs_psn_column = True
         sanitized_rows.append(new_cells)
-
-    if needs_psn_column:
-        out_headers.append("raksha_patient_id")
-        for rec, row in zip(source.records, sanitized_rows):
-            row.append(rec.pseudonym_id or "")
 
     with target_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, delimiter=delimiter, lineterminator="\n")
@@ -200,7 +202,54 @@ def write_json_source(source: SourceFile, target_path: Path) -> None:
 
     container_type = source.records[0].field_metadata.get("container_type", "single_object")
 
-    if container_type == "single_object":
+    if container_type == 'scoped_tree':
+        payload = copy.deepcopy(source.records[0].field_metadata['document'])
+        for rec in source.records:
+            payload = _apply_json_decisions(payload, rec)
+            if rec.pseudonym_id and not rec.field_metadata.get('metadata_only'):
+                located = _navigate_parent(payload, _split_pointer(rec.loc))
+                if located:
+                    parent, key = located
+                    subject = parent[key]
+                    if isinstance(subject, dict) and not _contains_pseudonym(subject, rec.pseudonym_id):
+                        subject['patient_id'] = rec.pseudonym_id
+        # Binary payloads cannot be inspected by the text pipeline.
+        def remove_binary(obj):
+            if isinstance(obj, dict):
+                for key in list(obj):
+                    if key.casefold() in {'bytes_b64', 'binary', 'image_data'}:
+                        obj[key] = None
+                    else:
+                        remove_binary(obj[key])
+            elif isinstance(obj, list):
+                for item in obj:
+                    remove_binary(item)
+        remove_binary(payload)
+        renames = {}
+        def rename_keys(obj, old_path='', new_path=''):
+            if isinstance(obj, dict):
+                for key in list(obj):
+                    # Dynamic identifiers, human-readable personal keys and
+                    # attachment filenames are opaque schema data, not labels.
+                    dynamic = bool(re.search(r'[\s.\\-]', key))
+                    new_key = ('KEY-' + hmac.new(
+                        os.environ['RAKSHA_SECRET'].encode(), b'json-key\0' + key.encode(),
+                        hashlib.sha256).hexdigest()[:20]) if dynamic else key
+                    old_pointer = old_path + '/' + key.replace('~', '~0').replace('/', '~1')
+                    new_pointer = new_path + '/' + new_key.replace('~', '~0').replace('/', '~1')
+                    renames[old_pointer] = new_pointer
+                    value = obj.pop(key) if new_key != key else obj[key]
+                    obj[new_key] = value
+                    rename_keys(value, old_pointer, new_pointer)
+            elif isinstance(obj, list):
+                for idx, item in enumerate(obj):
+                    rename_keys(item, old_path + '/' + str(idx), new_path + '/' + str(idx))
+        rename_keys(payload)
+        for rec in source.records:
+            prefix = next((p for p in sorted(renames, key=len, reverse=True)
+                           if rec.loc == p or rec.loc.startswith(p + '/')), '')
+            rec.field_metadata['sanitized_loc'] = renames[prefix] + rec.loc[len(prefix):] if prefix else rec.loc
+    elif container_type == "single_object":
         rec = source.records[0]
         obj = _apply_json_decisions(rec.original_structure, rec, base_prefix="")
         if (

@@ -180,11 +180,10 @@ class EndToEndAndMetricsTests(unittest.TestCase):
             )
 
             self.assertNotIn("9876543210", sanitized)
-            self.assertIn(
-                "[UNRESOLVED: PHONE_WITHOUT_DOB_OR_STABLE_ID]", sanitized
-            )
+            self.assertIn("[PHONE]", sanitized)
+            self.assertNotIn("UNRESOLVED", sanitized)
             self.assertIn("BP 120/80", sanitized)
-            self.assertIsNone(record_line["patient"])
+            self.assertTrue(record_line["patient"].startswith("PSN-"))
 
     def test_synthetic_multilingual_benchmark_metrics(self) -> None:
         # Synthetic labeled evaluation corpus across EN, HI, and Hinglish.

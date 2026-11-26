@@ -1,0 +1,157 @@
+{
+  "export": {
+    "clinic": "Sanjeevani City Clinic & Family Health Centre, Sonpur",
+    "generated": "2024-06-19T21:40:11+05:30",
+    "operator": {
+      "login": "[USERNAME]",
+      "machine": "[USERNAME]"
+    },
+    "schema_version": "fam-v3 (some records still fam-v1)"
+  },
+  "families": {
+    "KEY-4a19f7865564eee34ab2": {
+      "head": {
+        "name": "[RELATIVE]",
+        "age": "75-79",
+        "phone": "[PHONE]"
+      },
+      "address": "[ADDRESS]",
+      "members": [
+        {
+          "relation_to_head": "beta",
+          "name": "PSN-3P4GWQ4SJDDHSSWOHX2SA",
+          "visits": [
+            {
+              "date": "07/07/2024",
+              "note": "BP 142/88 on Telma-AM. PSN-3P4GWQ4SJDDHSSWOHX2SA bhai bole [PATIENT] ki tabiyat bhi dikhani hai.",
+              "rx": [
+                "Tab Telma-AM 40/5 1-0-0"
+              ]
+            }
+          ]
+        },
+        {
+          "relation_to_head": "bahu",
+          "name": "PSN-C3HYVAI44HBZ47FARCW3Q",
+          "dob": "02-07-1979",
+          "visits": [
+            {
+              "date": "26/10/2024",
+              "note": "C/O joint pain x 3 months, morning stiffness > 1 hr. RA factor sent. K/C/O hypothyroid on Thyronorm 75 mcg.",
+              "rx": [
+                "Tab HCQS 200 mg 1-0-0",
+                "Tab Thyronorm 75 mcg 1-0-0 empty stomach"
+              ]
+            }
+          ]
+        },
+        {
+          "relation_to_head": "poti",
+          "name": "PSN-UB74QUGHHOUGLUJBRSNT2",
+          "age": "10-14",
+          "school": "[SCHOOL]",
+          "visits": [
+            {
+              "date": "2024-09-23",
+              "note": "Acne, irregular cycles. Mother present. Confidential — patient asked not to tell father.",
+              "rx": [
+                "Gel Adapalene 0.1% HS"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "KEY-393bf25ad0d17b44c330": {
+      "head": {
+        "name": "[RELATIVE]",
+        "age": "35-39",
+        "phone": "[PHONE]"
+      },
+      "note_for_staff": "[PATIENT] ka accident hua tha Nov mein ([CASE_NO]), right haath plaster mein",
+      "members": [
+        {
+          "relation_to_head": "wife",
+          "name": "PSN-O5IQCNDR2NJFJHRB4QPBS",
+          "visits": [
+            {
+              "date": "1729328400000",
+              "note": "Post-LSCS 6 wk check. Wound healthy. Hb 10.4. Contraception counselling — Cu-T inserted.",
+              "rx": [
+                "Tab Ferrous + FA 1-0-0 x 3 months"
+              ]
+            }
+          ]
+        },
+        {
+          "relation_to_head": "son",
+          "name": "PSN-MVPW44IU37EROHYDU4NIA",
+          "visits": [
+            {
+              "date": "[DATE]",
+              "note": "Post febrile seizure F/U. No recurrence. Syp Paracetamol 15 mg/kg SOS if temp > 100.4F.",
+              "rx": [
+                "Syp Paracetamol 250mg/5ml 6 ml SOS"
+              ]
+            }
+          ]
+        },
+        {
+          "relation_to_head": "son",
+          "name": "PSN-5LJSJH7RRMEUBLFUUUAME",
+          "dob": "[DATE]",
+          "visits": [
+            {
+              "date": "[DATE]",
+              "note": "Wt 4.1 kg. Jaundice resolved. Vaccines: BCG, OPV-0, Hep B-0 done at SDH; Penta-1/OPV-1/RVV-1 given today. Next due 28/05/2025.",
+              "rx": []
+            }
+          ]
+        }
+      ]
+    },
+    "KEY-faf24b2a6dbd7efa67cd": {
+      "_comment": "fam-v1 record: family key is the patient's own name",
+      "phone": "[PHONE]",
+      "visits": [
+        {
+          "date": "[DATE]",
+          "note": "Bhitauli wali [PATIENT] — [IDENTITY_HINT] Post dengue, hair fall, weakness. Plt 2,10,000. Anganwadi duty resume kar sakti hain.",
+          "rx": [
+            "Tab Biotin 10 mg 0-1-0",
+            "Tab B-complex 1-0-0"
+          ]
+        }
+      ],
+      "patient_id": "PSN-XS5AML4OWOWDBIIQV3XRK"
+    },
+    "KEY-a824d4a45dec231993b4": {
+      "members": [
+        {
+          "name": "PSN-75AYKJUUDY3LTWUI3HTHY",
+          "age": "60-69",
+          "visits": [
+            {
+              "date": "[DATE]",
+              "note": "PSN-75AYKJUUDY3LTWUI3HTHY kaka, rickshaw puller, sleeps outside Hanuman Mandir. Diabetic foot ulcer L great toe. Dressing done. Free medicines from Dr. Neha's fund.",
+              "rx": [
+                "Tab Metformin 500 mg 1-0-1",
+                "Cap Amoxiclav 625 mg 1-0-1 x 7 days"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "attachments": {
+    "KEY-5bbeec50af388a6d6b0a": {
+      "status": "pending",
+      "bytes_b64": null
+    },
+    "KEY-8fc4580ce4e481fd16ac": {
+      "status": "uploaded",
+      "bytes_b64": null
+    }
+  }
+}

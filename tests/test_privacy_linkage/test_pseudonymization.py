@@ -151,7 +151,7 @@ class HMACPseudonymAssignmentTests(unittest.TestCase):
 
 
 class PseudonymSafetyTests(unittest.TestCase):
-    def test_unresolved_cluster_receives_no_pseudonym(self) -> None:
+    def test_non_ambiguous_singleton_receives_pseudonym(self) -> None:
         record = _record("rec_1")
         cluster = _cluster(
             "clu_1", "rec_1", status=ResolutionStatus.UNRESOLVED
@@ -159,9 +159,10 @@ class PseudonymSafetyTests(unittest.TestCase):
 
         metrics = assign_cluster_pseudonyms([record], [cluster], b"secret-alpha")
 
-        self.assertIsNone(cluster.pseudonym_id)
-        self.assertIsNone(record.pseudonym_id)
-        self.assertEqual(metrics.unresolved_clusters, 1)
+        self.assertTrue(cluster.pseudonym_id.startswith("PSN-"))
+        self.assertEqual(record.pseudonym_id, cluster.pseudonym_id)
+        self.assertEqual(metrics.assigned_clusters, 1)
+        self.assertEqual(metrics.unresolved_clusters, 0)
 
     def test_conflicting_identity_downgrades_cluster_without_token(self) -> None:
         records = [
@@ -176,14 +177,14 @@ class PseudonymSafetyTests(unittest.TestCase):
         self.assertIsNone(cluster.pseudonym_id)
         self.assertEqual(metrics.conflict_clusters, 1)
 
-    def test_weak_resolved_cluster_is_downgraded_to_unresolved(self) -> None:
+    def test_weak_singleton_uses_record_anchor(self) -> None:
         record = _record("rec_1", name_keys=["ravi"])
         cluster = _cluster("clu_1", "rec_1")
 
         assign_cluster_pseudonyms([record], [cluster], b"secret-alpha")
 
-        self.assertEqual(cluster.resolution_status, ResolutionStatus.UNRESOLVED)
-        self.assertIsNone(cluster.pseudonym_id)
+        self.assertEqual(cluster.resolution_status, ResolutionStatus.RESOLVED)
+        self.assertTrue(cluster.pseudonym_id.startswith("PSN-"))
 
     def test_empty_secret_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "non-empty secret key"):
@@ -232,10 +233,7 @@ class PseudonymSafetyTests(unittest.TestCase):
         ]
         self.assertEqual(len(redactions), 1)
         self.assertEqual(redactions[0].field_path, "doc")
-        self.assertEqual(
-            redactions[0].replacement_value,
-            "[UNRESOLVED: PHONE_WITHOUT_DOB_OR_STABLE_ID]",
-        )
+        self.assertEqual(redactions[0].replacement_value, "[PHONE]")
 
     def test_truncated_collision_is_extended_deterministically(self) -> None:
         secret = b"collision-test-secret"
@@ -316,10 +314,10 @@ class PrivacyDecisionIntegrationTests(unittest.TestCase):
             [record], [cluster], b"secret-alpha"
         )
 
-        self.assertEqual(len(decisions), 2)
+        self.assertEqual(len(decisions), 1)
         self.assertTrue(all(d.transform_type == TransformType.PSEUDONYMIZE for d in decisions))
         self.assertTrue(all(d.replacement_value == record.pseudonym_id for d in decisions))
-        self.assertEqual({d.field_path for d in decisions}, {"col:0", "col:1"})
+        self.assertEqual({d.field_path for d in decisions}, {"col:0"})
         self.assertNotIn("0001", repr(decisions))
 
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from typing import Any, Callable
+import copy
 
 from src.contracts import FieldNode, PatientRecord
 
@@ -92,6 +93,40 @@ def parse_json_document(
     next_record_ref: Callable[[], str],
 ) -> list[PatientRecord]:
     """Convert pre-validated JSON payload into normalized PatientRecords."""
+    # Discover person scopes before flattening. Clinical descendants belong to
+    # their closest person; family heads without encounters remain metadata.
+    scopes = []
+    def discover(obj, pointer=''):
+        if isinstance(obj, dict):
+            clinical = any(k.casefold() in {'visits', 'encounters', 'diagnosis', 'dx', 'rx', 'vitals', 'labs'} for k in obj)
+            person = any(k.casefold() in {'name', 'patient_name', 'patient'} for k in obj)
+            if clinical and (person or ('visits' in obj and pointer.count('/') >= 2)):
+                scopes.append((pointer, obj))
+                return
+            for key, value in obj.items():
+                discover(value, pointer + '/' + _escape_pointer_token(str(key)))
+        elif isinstance(obj, list):
+            for idx, value in enumerate(obj):
+                discover(value, pointer + '/' + str(idx))
+    discover(parsed_payload)
+    if scopes and any(pointer.count('/') > 2 for pointer, _ in scopes):
+        records = []
+        owned_paths = [pointer for pointer, _ in scopes]
+        for pointer, obj in scopes:
+            records.append(PatientRecord(
+                record_ref=next_record_ref(), source_ref=source_ref, loc=pointer,
+                original_structure=obj, fields=_flatten_json_fields(obj, pointer),
+                field_metadata={'container_type': 'scoped_tree', 'document': parsed_payload},
+            ))
+        context = [node for node in _flatten_json_fields(parsed_payload)
+                   if not any(node.field_path.startswith(p + '/') for p in owned_paths)]
+        records.append(PatientRecord(
+            record_ref=next_record_ref(), source_ref=source_ref, loc='/',
+            original_structure=parsed_payload, fields=context,
+            field_metadata={'container_type': 'scoped_tree', 'document': parsed_payload,
+                            'is_footer_row': True, 'metadata_only': True},
+        ))
+        return records
     entries = _extract_record_entries(parsed_payload)
     records: list[PatientRecord] = []
 

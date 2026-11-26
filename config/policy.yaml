@@ -38,3 +38,13 @@ privacy:
   hmac_algorithm: "sha256"
   abstain_on_conflict: true       # Export patient: null when identity is uncertain
   preserve_stay_duration: true    # Keep per-patient date shift consistent across records
+  k_threshold: 3                  # Minimum equivalence-class size for detailed QIs
+  age_band_width: 5               # Years per exported age band
+  age_top_code: 90                # All ages at/above this value become "90+"
+  date_shift_max_days: 180        # HMAC-derived non-zero shift range
+  address_locality_k: 3           # Localities below this group size fall back to coarser geography
+  merge_threshold: 0.8            # Minimum corroborated score needed to merge two records
+  ambiguity_margin: 0.05          # Close competing candidates above the floor remain null
+  singleton_policy: "assign"      # Give unmatched, non-conflicting patients their own PSN
+  k_location: 5                   # Distinct patients required before retaining a locality
+  household_shift: true           # Keep explicitly related same-day household events coherent
