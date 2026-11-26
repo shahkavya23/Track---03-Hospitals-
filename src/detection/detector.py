@@ -38,6 +38,8 @@ class MultilingualPIIDetector:
     def analyze_record(self, record: PatientRecord) -> list[DetectionSpan]:
         """Detect multilingual PII, QIs, and staff entities on `record`."""
         record.extracted_patient_attributes.clear()
+        if record.field_metadata.get('is_repeated_header'):
+            return []
 
         issuer = infer_record_facility_issuer(record)
         fhir_resource_map = build_fhir_resource_map(record)

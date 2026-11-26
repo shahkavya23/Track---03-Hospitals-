@@ -169,11 +169,19 @@ def score(truth, output):
     file_reports = {entry['input_sha256']: entry for entry in report.get('files', [])}
     input_root = truth.parent / 'input'
     quarantine_ok = 0
+    processable_total = processable_quarantined = 0
+    unprocessable_total = unprocessable_quarantined = 0
     raw_copies = []
     for filename, expected in statuses.items():
         original = input_root / filename
         digest = hashlib.sha256(original.read_bytes()).hexdigest()
         entry = file_reports.get(digest, {})
+        if expected == 'sanitized':
+            processable_total += 1
+            processable_quarantined += entry.get('status') != 'sanitized'
+        else:
+            unprocessable_total += 1
+            unprocessable_quarantined += entry.get('status') == 'quarantined'
         path = output / entry.get('output', '') if entry.get('output') else None
         quarantine_ok += bool(entry.get('status') == expected and (
             (expected == 'quarantined' and path is None and not (output/'sanitized'/filename).exists())
@@ -206,6 +214,8 @@ def score(truth, output):
                 canary_count=len(canary_hits), canary_penalty=20*len(canary_hits),
                 penalty_breakdown={'canary': 20*len(canary_hits), 'raw_copy': 10*len(raw_copies)},
                 raw_copy_count=len(raw_copies), quarantine_accuracy=ratio(quarantine_ok,len(statuses)),
+                processable_quarantine_rate=ratio(processable_quarantined, processable_total),
+                unprocessable_quarantine_rate=ratio(unprocessable_quarantined, unprocessable_total),
                 report_count_mismatches=count_mismatches, permitted_locality_observations=excluded_qi,
                 pii_recall={k: ratio(a,b) for k,(a,b) in sorted(breakdown.items())},
                 protected_recall=survival, interval_exactness=ratio(interval_ok,len(intervals)),

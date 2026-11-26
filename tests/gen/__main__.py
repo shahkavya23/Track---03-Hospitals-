@@ -8,6 +8,12 @@ from pathlib import Path
 from .templates import TUNE
 from .holdout import HOLDOUT
 from .surfaces import add_surfaces
+from .mixed_templates import (
+    EMAIL_OCR_HOLDOUT,
+    EMAIL_OCR_TUNE,
+    MIXED_HOLDOUT,
+    MIXED_TUNE,
+)
 
 
 def write_json(path, obj):
@@ -68,13 +74,65 @@ def generate(seed, patients, profile, out, surface_variants=0):
                                ('archive.zip', b'PK\x03\x04'), ('empty.txt', b'')]:
         (inp / filename).write_bytes(content)
         statuses[filename] = 'quarantined'
+    mixed = MIXED_TUNE if profile == 'tune' else MIXED_HOLDOUT
+    subject = entities[1 if len(entities) > 1 else 0]
+    mixed_text = (
+        mixed['opening'] + '\n' +
+        f"Patient: {subject['name']}\nPhone: {subject['phone']}\n" +
+        mixed['table'] + '\n' +
+        json.dumps({mixed['json_key']: subject['name'], 'pulse': 72}, ensure_ascii=False) + '\n' +
+        mixed['chat'].format(name=subject['name']) + '\n'
+    )
+    (inp / mixed['filename']).write_text(mixed_text, encoding='utf-8')
+    statuses[mixed['filename']] = 'sanitized'
+    inventory.extend([
+        dict(file=mixed['filename'], loc='doc', value=subject['name'], type='PATIENT',
+             surface='free text', script='Latin', column=None),
+        dict(file=mixed['filename'], loc='doc', value=subject['phone'], type='PHONE',
+             surface='free text', script='Latin', column=None),
+    ])
+    email_tpl = EMAIL_OCR_TUNE if profile == 'tune' else EMAIL_OCR_HOLDOUT
+    email_subj = entities[2 if len(entities) > 2 else 0]
+    email_addr = f"rel.{seed}@example.org"
+    ocr_phone = f"98l5O {22700 + seed:05d}"
+    email_text = (
+        f"From: {email_tpl['relative']} <{email_addr}>\n"
+        f"To: mrd@hospital.example\n"
+        f"Cc: \"{email_tpl['doctor']}\" <doc.{seed}@hospital.example>\n"
+        f"Date: Thu, 28 Nov 2024 16:02:11 +0530\n"
+        f"Subject: Re: Fwd: Discharge summary - {email_subj['name']}\n"
+        f"Attachments: IMG_20241117_scan.jpg\n\n"
+        f"> On Thu, 28 Nov 2024, MRD <mrd@hospital.example> wrote:\n"
+        f"> Summary attached.\n\n"
+        f"Name (identified 19/11/2024): {email_subj['name']}\n"
+        f"Age/Sex : {email_subj['age']} Y / {email_subj['sex']} (DOB O3/02/{2024 - email_subj['age']})\n"
+        f"Informant: Son {email_tpl['relative']}, mob {ocr_phone}\n"
+        f"{email_tpl['festival']} (15/11) ke baad fever.\n"
+        f"कार्यकर्ता ({email_tpl['deva_staff']}): '{email_tpl['urdu_rel']}' आए।\n"
+        f"WARD NOTES\n"
+        f" 18/11 0600  {email_tpl['staff']} ne ID bracelet lagaya.\n"
+        f"Medicine review: {email_tpl['doctor']}\n"
+    )
+    (inp / email_tpl['filename']).write_text(email_text, encoding='utf-8')
+    statuses[email_tpl['filename']] = 'sanitized'
+    inventory.extend([
+        dict(file=email_tpl['filename'], loc='doc', value=email_subj['name'], type='PATIENT',
+             surface='free text', script='Latin', column=None),
+        dict(file=email_tpl['filename'], loc='doc', value=email_addr, type='EMAIL',
+             surface='free text', script='Latin', column=None),
+        dict(file=email_tpl['filename'], loc='doc', value=email_tpl['deva_staff'], type='STAFF',
+             surface='free text', script='Devanagari', column=None),
+        dict(file=email_tpl['filename'], loc='doc', value=email_tpl['urdu_rel'], type='RELATIVE',
+             surface='free text', script='Arabic', column=None),
+    ])
     add_surfaces(inp, template, profile, seed, surface_variants, inventory, statuses)
     write_json(truth / 'entities.json', entities)
     write_json(truth / 'file_status.json', statuses)
     write_json(truth / 'canaries.json', canaries)
     write_json(truth / 'manifest.json', dict(seed=seed, patients=patients, profile=profile,
         surface_variants=surface_variants,
-        coverage=['namesakes', 'shared_household_phone', 'cross_hospital', 'csv', 'quarantine_bait'],
+        coverage=['namesakes', 'shared_household_phone', 'cross_hospital', 'csv',
+                  'mixed_document', 'quarantine_bait'],
         unsupported=['twins', 'newborns', 'nested_json', 'fhir', 'multiscript', 'legacy_encodings']))
     for name, values in [('records', records), ('pii_inventory', inventory), ('protected', protected), ('intervals', intervals)]:
         (truth / (name + '.jsonl')).write_text(''.join(json.dumps(v, ensure_ascii=False, sort_keys=True)+'\n' for v in values), encoding='utf-8')

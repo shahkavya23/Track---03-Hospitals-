@@ -29,6 +29,14 @@ from src.contracts import (
 from src.ingestion import IngestionConfig, UniversalIngestor
 from src.clinical import ClinicalIntegrityGuard
 from src.detection import MultilingualPIIDetector
+from src.engine import (
+    ENGINE_VERSION,
+    EngineContext,
+    compute_policy_hash,
+    detect_document,
+    emit_trace,
+    process_batch,
+)
 from src.linkage.engine import ConservativeLinkageEngine
 from src.linkage.matcher import MatcherPolicy
 from src.privacy import AdaptivePrivacyEngine
@@ -99,6 +107,7 @@ class RakshaPipeline:
                 k_location=int(privacy_cfg.get("k_location", 5)),
                 household_shift=bool(privacy_cfg.get("household_shift", True)),
             )
+        self.policy_path = policy_path
         self.serializer = serializer if serializer is not None else SafeOutputSerializer()
 
     def run(self, input_dir: Path, output_dir: Path) -> AuditMetrics:
@@ -130,9 +139,17 @@ class RakshaPipeline:
 
         sources: list[SourceFile] = self.ingestor.ingest_directory(input_dir)
         sources.sort(key=lambda source: source.relative_path)
-        for source in sources:
-            for record in source.records:
-                record.field_metadata['record_namespace'] = source.relative_path
+
+        ctx = EngineContext(
+            secret_key=secret_key,
+            detector=self.detector,
+            clinical_guard=self.clinical_guard,
+            privacy_engine=self.privacy_engine,
+            policy_path=self.policy_path,
+            policy_hash=compute_policy_hash(self.policy_path),
+            engine_version=ENGINE_VERSION,
+        )
+
         all_records: list[PatientRecord] = [
             record for source in sources for record in source.records
         ]
@@ -143,26 +160,12 @@ class RakshaPipeline:
         ]
 
         identifiers_detected = 0
-        for record in all_records:
-            raw_spans = self.detector.analyze_record(record)
-            protected_spans, clinical_attrs = self.clinical_guard.protect_clinical(
-                record, raw_spans
-            )
-            record.detections = list(protected_spans)
-            record.clinical_attributes = list(clinical_attrs)
-            identifiers_detected += sum(
-                1 for span in record.detections if span.role != SpanRole.CLINICAL_PROTECTED
-            )
+        for source in sources:
+            identifiers_detected += detect_document(source, ctx)
 
         _, clusters = self.linker.link_records(export_records)
-        decisions = self.privacy_engine.transform(all_records, clusters, secret_key)
-
-        decision_by_record: dict[str, list] = {}
-        for decision in decisions:
-            decision_by_record.setdefault(decision.record_ref, []).append(decision)
-        for record in all_records:
-            if record.record_ref in decision_by_record:
-                record.privacy_decisions = decision_by_record[record.record_ref]
+        process_batch(sources, ctx, clusters=clusters, already_detected=True)
+        emit_trace(ctx)
 
         files_sanitized = sum(1 for src in sources if src.parse_status == ParseStatus.PARSED)
         files_quarantined = sum(1 for src in sources if src.parse_status == ParseStatus.QUARANTINED)
@@ -199,6 +202,8 @@ class RakshaPipeline:
             records_quarantined=0,
             seconds=time.perf_counter() - start_ts,
             peak_rss_mb=_peak_rss_mb(),
+            engine_version=ctx.engine_version,
+            policy_hash=ctx.policy_hash,
         )
 
         metrics = self.serializer.serialize_all(sources, output_dir, metrics)

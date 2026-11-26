@@ -159,10 +159,19 @@ class AuditMetrics:
     seconds: float = 0.0
     peak_rss_mb: float = 0.0
     substitutions_by_type: dict[str, int] = field(default_factory=dict)
+    applied_replacements: int = 0
+    residual_scanner_late_catches: int = 0
+    reredaction_iterations: int = 0
+    engine_version: str = "unknown"
+    policy_hash: str = "none"
 
     def to_report_dict(self) -> dict[str, Any]:
         """Serialize strictly into the official report.json schema."""
         return {
+            "engine": {
+                "version": self.engine_version,
+                "policy_hash": self.policy_hash,
+            },
             "files": [entry.to_dict() for entry in self.files],
             "counts": {
                 "files_total": self.files_total,
@@ -178,4 +187,7 @@ class AuditMetrics:
             "timing": {"seconds": round(self.seconds, 3)},
             "resources": {"peak_rss_mb": round(self.peak_rss_mb, 2)},
             "substitutions_by_type": dict(sorted(self.substitutions_by_type.items())),
+            'applied_replacements': self.applied_replacements,
+            'residual_scanner_late_catches': self.residual_scanner_late_catches,
+            'reredaction_iterations': self.reredaction_iterations,
         }

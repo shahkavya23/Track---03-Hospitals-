@@ -84,7 +84,7 @@ export default function IngestTab({
   const counts = report?.counts || {};
   const sanitizedCount = metrics?.files_sanitized ?? counts.files_sanitized ?? 0;
   const quarantinedCount = metrics?.files_quarantined ?? counts.files_quarantined ?? 0;
-  const detectedCount = metrics?.identifiers_detected ?? counts.identifiers_detected ?? 0;
+  const detectedCount = report?.applied_replacements ?? 0;
   const seconds = metrics?.seconds ?? report?.timing?.seconds;
   const hasRun = Boolean(metrics || report);
 
@@ -299,7 +299,7 @@ export default function IngestTab({
                 {quarantinedCount} quarantined
               </button>
             )}
-            <span>{detectedCount} PII spans</span>
+            <span>{detectedCount} applied replacements</span>
             {seconds !== undefined && <span>{Number(seconds).toFixed(2)}s</span>}
           </div>
         )}
@@ -344,15 +344,15 @@ export default function IngestTab({
             {diffData && (
               <span
                 className={`text-xs font-mono inline-flex items-center gap-1.5 ${
-                  isQuarantined ? 'text-rose-400' : 'text-emerald-400'
+                  isQuarantined || diffData?.verification?.hits > 0 ? 'text-rose-400' : diffData?.verification?.verified === true ? 'text-emerald-400' : 'text-amber-400'
                 }`}
               >
-                {isQuarantined ? (
+                {isQuarantined || diffData?.verification?.verified !== true ? (
                   <AlertOctagon className="w-4 h-4" strokeWidth={1.5} />
                 ) : (
                   <CheckCircle2 className="w-4 h-4" strokeWidth={1.5} />
                 )}
-                <span>{isQuarantined ? `Quarantined · ${quarantineReason}` : 'Verified clean'}</span>
+                <span>{isQuarantined ? `Quarantined · ${quarantineReason}` : diffData?.verification?.hits > 0 ? `Leaks detected: ${diffData.verification.hits}` : diffData?.verification?.verified === true ? 'Verified clean' : 'Verification incomplete'}</span>
               </span>
             )}
           </div>
@@ -412,7 +412,7 @@ export default function IngestTab({
               <div className="px-4 py-2 bg-[#131417] border-b border-white/[0.06] flex items-center justify-between text-xs text-zinc-500">
                 <span>Protected output</span>
                 <span className={`font-mono ${isQuarantined ? 'text-rose-400' : 'text-emerald-400'}`}>
-                  {isQuarantined ? 'Quarantined' : 'De-identified'}
+                  {isQuarantined ? 'Quarantined' : 'Processed · review required'}
                 </span>
               </div>
               <div className="p-4 bg-[#0D0E10] overflow-auto max-h-[540px] flex-1">

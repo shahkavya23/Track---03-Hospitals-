@@ -43,7 +43,7 @@ export default function ClinicalTab() {
 
         <span className="text-xs font-mono text-emerald-400 inline-flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4" strokeWidth={1.5} />
-          <span>100% preservation verified</span>
+          <span>Preservation requires verification</span>
         </span>
       </div>
 

@@ -33,8 +33,8 @@ def test_supported_localities_are_not_pii_leaks(tmp_path):
     card = score(tmp_path/'data/truth', copied)
     assert card['permitted_locality_observations'] > 0
     assert 'type:LOCALITY' not in card['pii_recall']
-    assert card['raw_copy_count'] == 3
-    assert card['penalty_breakdown']['raw_copy'] == 30
+    assert card['raw_copy_count'] == 4
+    assert card['penalty_breakdown']['raw_copy'] == 40
 
 
 @pytest.mark.parametrize('variant', range(50))
@@ -58,6 +58,11 @@ def test_canary_on_encoded_attachment_is_counted_once(tmp_path, variant):
 def test_holdout_templates_frozen():
     path = Path(__file__).parent / 'gen/holdout.py'
     assert hashlib.sha256(path.read_bytes().replace(b'\r\n', b'\n')).hexdigest() == 'f01fec78f36ef8316df7b225a905ea2b84e1633066f703bc97e1ac687b161a8b'
+
+
+def test_mixed_holdout_templates_frozen():
+    path = Path(__file__).parent / 'gen/mixed_templates.py'
+    assert hashlib.sha256(path.read_bytes().replace(b'\r\n', b'\n')).hexdigest() == '34ad9143437b246894d3c870cc283644e8af79df04a5250a40f3e300ad5e452a'
 
 
 def test_generator_deterministic(tmp_path):

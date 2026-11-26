@@ -12,6 +12,7 @@ class FileFormat(StrEnum):
     CSV = "csv"
     TSV = "tsv"
     JSON = "json"
+    JSONL = 'jsonl'
     FHIR_R4 = "fhir_r4"
     TEXT = "text"
     UNSUPPORTED = "unsupported"

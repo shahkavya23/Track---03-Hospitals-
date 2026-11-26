@@ -120,16 +120,6 @@ class UniversalIngestor:
         detected_format = FileFormat.UNSUPPORTED
         detected_encoding = "unknown"
 
-        suffix = PurePosixPath(relative_posix).suffix.lower()
-        if suffix not in self.config.supported_extensions:
-            return self._quarantined_source(
-                source_ref=source_ref,
-                sha256=sha256,
-                relative_posix=relative_posix,
-                file_format=detected_format,
-                encoding=detected_encoding,
-                reason="unsupported format",
-            )
 
         try:
             raw_bytes = abs_path.read_bytes()
@@ -162,7 +152,7 @@ class UniversalIngestor:
                     next_record_ref=next_record_ref,
                     allowed_delimiters=self.config.csv_allowed_delimiters,
                 )
-            elif detected_format == FileFormat.JSON:
+            elif detected_format in (FileFormat.JSON, FileFormat.JSONL):
                 records = parse_json_document(
                     parsed_payload=parsed_json,
                     source_ref=source_ref,

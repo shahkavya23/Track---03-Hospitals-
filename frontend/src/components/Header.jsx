@@ -12,6 +12,7 @@ export default function Header({
   onSelectTab,
   status,
   hasOutput,
+  exportAllowed = false,
   filesCount,
   quarantinedCount,
   clustersCount,
@@ -78,7 +79,10 @@ export default function Header({
 
         {/* Primary Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          {hasOutput && (
+          {hasOutput && !exportAllowed && (
+            <button disabled title="Independent verification is incomplete or residual leaks were detected" className="text-xs text-amber-400 px-3">Export blocked</button>
+          )}
+          {hasOutput && exportAllowed && (
             <a
               href="/api/download-zip"
               download="raksha_sanitized_package.zip"

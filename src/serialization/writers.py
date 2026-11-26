@@ -177,6 +177,9 @@ def write_tabular_source(source: SourceFile, target_path: Path) -> None:
     sanitized_rows: list[list[str]] = []
     for rec in source.records:
         cells = list(rec.original_structure["cells"])
+        if rec.field_metadata.get('is_repeated_header'):
+            sanitized_rows.append(list(out_headers))
+            continue
         new_cells: list[str] = []
         for col_idx, cell in enumerate(cells):
             if col_idx < len(orig_headers):
@@ -301,7 +304,10 @@ def write_json_source(source: SourceFile, target_path: Path) -> None:
         root_ctx.update(arrays)
         payload = root_ctx
 
-    target_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if source.format == FileFormat.JSONL:
+        target_path.write_text(''.join(json.dumps(row, ensure_ascii=False)+'\n' for row in payload), encoding='utf-8')
+    else:
+        target_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
 
 
 def write_fhir_source(source: SourceFile, target_path: Path) -> None:
@@ -371,6 +377,4 @@ def write_text_source(source: SourceFile, target_path: Path) -> None:
     rec = source.records[0]
     raw_text = str(rec.original_structure)
     sanitized_text, _ = apply_decisions_to_field(raw_text, rec, "doc")
-    if rec.pseudonym_id is not None and rec.pseudonym_id not in sanitized_text:
-        sanitized_text = f"[PATIENT_ID: {rec.pseudonym_id}]\n{sanitized_text}"
     target_path.write_text(sanitized_text, encoding="utf-8")

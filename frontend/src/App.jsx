@@ -60,7 +60,7 @@ export default function App() {
       const data = await api.fetchDiff(filename);
       setDiffData(data);
     } catch (e) {
-      console.error(e);
+      setDiffData(null);
     }
   };
 
@@ -217,6 +217,7 @@ export default function App() {
         onSelectTab={setActiveTab}
         status={status}
         hasOutput={hasOutput}
+        exportAllowed={diffData?.verification?.export_allowed === true}
         filesCount={files.length}
         quarantinedCount={quarantinedCount}
         clustersCount={clustersCount}

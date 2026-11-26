@@ -20,15 +20,35 @@ _NON_PROPAGATABLE_TOKENS = frozenset({
     "patient", "doctor", "hospital", "clinic", "ward", "fever", "cough", "pain",
     "care", "note", "notes", "date", "male", "female", "indian", "delhi", "mumbai",
     "ramipril", "dolo", "paracetamol", "insulin", "parkinson", "addison", "alzheimer",
+    "prasad", "prem", "asha", "shanti", "bhagwati", "kamal", "daya", "sukh",
+    "ganga", "lakshmi", "mandir", "jagran", "puja",
 })
 
 # Tokenize Latin words OR Devanagari words (excluding Devanagari digits/danda).
 _WORD_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z'’-]{1,24}|[\u0901-\u0963\u0970-\u097f]{2,24}")
 
 
+_DOCTOR_SPAN_RE = re.compile(
+    r"(?i)(?:\bDr\.?|\bDoctor|डॉ\.?|डॉक्टर|ڈاکٹر)[ \t]+"
+    r"(?:[A-Z][A-Za-z'’.-]{1,24}|[A-Z]\.|[\u0900-\u097f]{2,24}|[\u0600-\u06ff]{2,24})"
+    r"(?:[ \t]+(?:[A-Z][A-Za-z'’.-]{1,24}|[A-Z]\.|[\u0900-\u097f]{2,24}|[\u0600-\u06ff]{2,24})){0,3}"
+)
+
+
 def _is_dr_prefixed(text: str, start: int) -> bool:
-    prefix = text[max(0, start - 10) : start].lower()
-    return bool(re.search(r"(?:dr\.?|डॉ\.?|डॉक्टर)\s*$", prefix))
+    for match in _DOCTOR_SPAN_RE.finditer(text):
+        if match.start() <= start < match.end():
+            return True
+    return False
+
+
+def _is_local_name_context(text: str, start: int, end: int) -> bool:
+    before = text[max(0, start - 35):start]
+    after = text[end:min(len(text), end + 20)]
+    return bool(
+        re.search(r"(?i)(?:\b(?:patient|name|son|daughter|wife|husband|guardian|informant|Mr|Mrs|Ms|Shri|Smt|urf|alias)\b|['\"‘’]|(?:^|\n)[^\n:]{0,20}:)[ \t]*$", before)
+        or re.match(r"(?i)[ \t]*(?:ji|sahab|ne\b|:|['\"‘’])", after)
+    )
 
 
 def _overlaps_existing(field_path: str, s: int, e: int, existing: Sequence[DetectionSpan]) -> bool:
@@ -144,6 +164,8 @@ def propagate_known_names_in_record(
                     if pkey != tok_pkey:
                         continue
                     if word_raw.isascii() and not word_raw[0].isupper():
+                        continue
+                    if not _is_local_name_context(raw, ws, we):
                         continue
                     if _is_dr_prefixed(raw, ws) or _overlaps_existing(node.field_path, ws, we, seed_spans):
                         continue

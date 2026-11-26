@@ -116,7 +116,7 @@ export default function DiffTab({
               ) : (
                 <CheckCircle2 className="w-4 h-4" strokeWidth={1.5} />
               )}
-              <span>{isQuarantined ? `Quarantined · ${quarantineReason}` : 'Verified clean'}</span>
+              <span>{isQuarantined ? `Quarantined · ${quarantineReason}` : diffData?.verification?.hits > 0 ? `Leaks detected: ${diffData.verification.hits}` : diffData?.verification?.verified === true ? 'Verified clean' : 'Verification incomplete'}</span>
             </span>
           )}
         </div>
@@ -141,7 +141,7 @@ export default function DiffTab({
           <div className="px-4 h-10 border-b border-white/[0.08] flex items-center justify-between">
             <span className="text-xs font-medium text-zinc-200">RAKSHA protected output</span>
             <span className={`text-xs font-mono ${isQuarantined ? 'text-rose-400' : 'text-emerald-400'}`}>
-              {isQuarantined ? 'Blocked by gate' : 'De-identified'}
+              {isQuarantined ? 'Blocked by gate' : 'Processed · review required'}
             </span>
           </div>
 
