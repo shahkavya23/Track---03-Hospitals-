@@ -1,0 +1,20 @@
+{
+  "coverage": [
+    "namesakes",
+    "shared_household_phone",
+    "cross_hospital",
+    "csv",
+    "quarantine_bait"
+  ],
+  "patients": 300,
+  "profile": "holdout",
+  "seed": 4,
+  "unsupported": [
+    "twins",
+    "newborns",
+    "nested_json",
+    "fhir",
+    "multiscript",
+    "legacy_encodings"
+  ]
+}

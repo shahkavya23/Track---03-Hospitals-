@@ -1,0 +1,9 @@
+{
+  "archive.zip": "quarantined",
+  "broken.json": "quarantined",
+  "empty.txt": "quarantined",
+  "hospital_0.csv": "sanitized",
+  "hospital_1.csv": "sanitized",
+  "hospital_2.csv": "sanitized",
+  "image.jpg": "quarantined"
+}

@@ -1,0 +1,28 @@
+{
+  "files": [
+    {
+      "input_sha256": "314ad25f1109b00b9db1423e1f1c272a830521c4ca37a24c59a5ec2e26a363ff",
+      "output": null,
+      "status": "quarantined",
+      "reason": "output verification failed"
+    }
+  ],
+  "counts": {
+    "files_total": 1,
+    "files_sanitized": 0,
+    "files_quarantined": 1,
+    "records_processed": 0,
+    "identifiers_detected": 30,
+    "records_linked": 0,
+    "records_generalized": 0,
+    "records_suppressed": 0,
+    "records_quarantined": 8
+  },
+  "timing": {
+    "seconds": 0.068
+  },
+  "resources": {
+    "peak_rss_mb": 30.11
+  },
+  "substitutions_by_type": {}
+}

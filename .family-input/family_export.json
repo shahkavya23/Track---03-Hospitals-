@@ -1,0 +1,38 @@
+{
+  "export": {
+    "clinic": "Sanjeevani City Clinic & Family Health Centre, Sonpur",
+    "generated": "2024-12-06T21:40:11+05:30",
+    "operator": {"login": "drneha", "machine": "SANJEEVANI-PC\\Pooja Yadav"},
+    "schema_version": "fam-v3 (some records still fam-v1)"
+  },
+  "families": {
+    "FAM-Qureshi-QaziTola": {
+      "head": {"name": "Abdul Rasheed Qureshi", "age": 78, "phone": "05442 23 1187"},
+      "address": "Qazi Tola, near Badi Masjid, Sonpur 271304",
+      "members": [
+        {"relation_to_head": "beta", "name": "Mohd. Arif", "visits": [{"date": "06/12/2024", "note": "BP 142/88 on Telma-AM. Arif bhai bole Shabana ki tabiyat bhi dikhani hai.", "rx": ["Tab Telma-AM 40/5 1-0-0"]}]},
+        {"relation_to_head": "bahu", "name": "शबाना बेगम", "dob": "12-08-1979", "visits": [{"date": "06/12/2024", "note": "C/O joint pain x 3 months, morning stiffness > 1 hr. RA factor sent. K/C/O hypothyroid on Thyronorm 75 mcg.", "rx": ["Tab HCQS 200 mg 1-0-0", "Tab Thyronorm 75 mcg 1-0-0 empty stomach"]}]},
+        {"relation_to_head": "poti", "name": "Zoya (Arif ki beti)", "age": "14", "school": "Govt Girls Inter College Sonpur, class 9-A", "visits": [{"date": "2024-12-06", "note": "Acne, irregular cycles. Mother present. Confidential — patient asked not to tell father.", "rx": ["Gel Adapalene 0.1% HS"]}]}
+      ]
+    },
+    "FAM-Yadav-Kachhwa": {
+      "head": {"name": "Rajan Yadav", "age": "38", "phone": "७००७२५५८१३"},
+      "note_for_staff": "Rajan ji ka accident hua tha Nov mein (MLC 117/2024), right haath plaster mein",
+      "members": [
+        {"relation_to_head": "wife", "name": "Meera", "visits": [{"date": "1733389200000", "note": "Post-LSCS 6 wk check. Wound healthy. Hb 10.4. Contraception counselling — Cu-T inserted.", "rx": ["Tab Ferrous + FA 1-0-0 x 3 months"]}]},
+        {"relation_to_head": "son", "name": "Raju @ Gudda", "visits": [{"date": "05.12.24", "note": "Post febrile seizure F/U. No recurrence. Syp Paracetamol 15 mg/kg SOS if temp > 100.4F.", "rx": ["Syp Paracetamol 250mg/5ml 6 ml SOS"]}]},
+        {"relation_to_head": "son", "name": "baby (naam abhi nahi rakha)", "dob": "27-10-2024 00:42", "visits": [{"date": "05.12.24", "note": "Wt 4.1 kg. Jaundice resolved. Vaccines: BCG, OPV-0, Hep B-0 done at SDH; Penta-1/OPV-1/RVV-1 given today. Next due 02/01/2025.", "rx": []}]}
+      ]
+    },
+    "Meera Devi W/o Rajan Prasad": {
+      "_comment": "fam-v1 record: family key is the patient's own name",
+      "phone": "+91 94506 61108",
+      "visits": [{"date": "Dec 2nd", "note": "Bhitauli wali Meera — NOT the Kachhwa one. Post dengue, hair fall, weakness. Plt 2,10,000. Anganwadi duty resume kar sakti hain.", "rx": ["Tab Biotin 10 mg 0-1-0", "Tab B-complex 1-0-0"]}]
+    },
+    "FAM-unknown-001": {"members": [{"name": "Bhola", "age": "60-65", "visits": [{"date": "yesterday", "note": "Bhola kaka, rickshaw puller, sleeps outside Hanuman Mandir. Diabetic foot ulcer L great toe. Dressing done. Free medicines from Dr. Neha's fund.", "rx": ["Tab Metformin 500 mg 1-0-1", "Cap Amoxiclav 625 mg 1-0-1 x 7 days"]}]}]}
+  },
+  "attachments": {
+    "lab_RA_factor_shabana.pdf": {"status": "pending", "bytes_b64": null},
+    "consent_cuT_meera_yadav.jpg": {"status": "uploaded", "bytes_b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/"}
+  }
+}
