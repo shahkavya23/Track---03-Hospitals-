@@ -1,11 +1,10 @@
-"""Contract invariant tests and stubbed foundation smoke test (Phase 1)."""
+"""Contract invariant tests and stubbed end-to-end smoke test (Phase 1+2)."""
 
 from __future__ import annotations
 
 import csv
 import hashlib
 import hmac
-import io
 import json
 import os
 import tempfile
@@ -15,10 +14,7 @@ from pathlib import Path
 from src.contracts import (
     AuditMetrics,
     DetectionSpan,
-    FieldNode,
-    FileFormat,
     LinkageDecision,
-    ParseStatus,
     PatientCluster,
     PatientRecord,
     PrivacyDecision,
@@ -28,58 +24,6 @@ from src.contracts import (
     TransformType,
 )
 from src.pipeline import RakshaPipeline
-
-
-class _StubIngestor:
-    """Explicit Phase 1 test stub simulating Member 1 ingestion on `main`."""
-
-    def ingest_directory(self, input_dir: Path) -> list[SourceFile]:
-        sources: list[SourceFile] = []
-        for idx, path in enumerate(sorted(p for p in input_dir.rglob("*") if p.is_file()), start=1):
-            rel = path.relative_to(input_dir).as_posix()
-            sha = hashlib.sha256(path.read_bytes()).hexdigest()
-            if path.suffix.lower() != ".csv":
-                sources.append(
-                    SourceFile(
-                        source_ref=f"src_{idx}",
-                        source_sha256=sha,
-                        relative_path=rel,
-                        sanitized_relative_path=None,
-                        format=FileFormat.UNSUPPORTED,
-                        encoding="unknown",
-                        parse_status=ParseStatus.QUARANTINED,
-                        quarantine_reason="unsupported format",
-                    )
-                )
-                continue
-            rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8"), newline="")))
-            headers = rows[0]
-            recs = [
-                PatientRecord(
-                    record_ref=f"rec_{idx}_{r_idx}",
-                    source_ref=f"src_{idx}",
-                    loc=f"row:{r_idx}",
-                    original_structure={"headers": headers, "cells": row},
-                    fields=[
-                        FieldNode(f"col:{c}:{headers[c]}", val, headers[c], True)
-                        for c, val in enumerate(row)
-                    ],
-                )
-                for r_idx, row in enumerate(rows[1:])
-            ]
-            sources.append(
-                SourceFile(
-                    source_ref=f"src_{idx}",
-                    source_sha256=sha,
-                    relative_path=rel,
-                    sanitized_relative_path=f"sanitized/{rel}",
-                    format=FileFormat.CSV,
-                    encoding="utf-8",
-                    parse_status=ParseStatus.PARSED,
-                    records=recs,
-                )
-            )
-        return sources
 
 
 class _StubDetector:
@@ -214,7 +158,8 @@ class _StubSerializer:
         metrics: AuditMetrics,
     ) -> AuditMetrics:
         output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / "sanitized").mkdir(parents=True, exist_ok=True)
+        sanitized_root = output_dir / "sanitized"
+        sanitized_root.mkdir(parents=True, exist_ok=True)
 
         records_lines: list[str] = []
         for src in sources:
@@ -268,7 +213,6 @@ class ContractAndSmokeTests(unittest.TestCase):
         old = os.environ.pop("RAKSHA_SECRET", None)
         try:
             pipeline = RakshaPipeline(
-                ingestor=_StubIngestor(),
                 detector=_StubDetector(),
                 clinical_guard=_StubClinicalGuard(),
                 linker=_StubLinker(),
@@ -289,13 +233,15 @@ class ContractAndSmokeTests(unittest.TestCase):
             (in_dir / "registration").mkdir(parents=True)
             (in_dir / "discharge").mkdir(parents=True)
 
-            (in_dir / "registration" / "hospital.csv").write_text(
+            csv_path = in_dir / "registration" / "hospital.csv"
+            csv_path.write_text(
                 "patient_name,notes\n"
                 "Mohammad Arif,Ramipril 5 mg and BP 150/90\n"
                 ",Fever observation\n",
                 encoding="utf-8",
             )
-            (in_dir / "discharge" / "scan.pdf").write_bytes(b"%PDF-1.4 fake binary")
+            bin_path = in_dir / "discharge" / "scan.pdf"
+            bin_path.write_bytes(b"%PDF-1.4 fake binary")
 
             def run_with_secret(secret: str, out_name: str) -> tuple[dict, list[dict], str]:
                 old = os.environ.get("RAKSHA_SECRET")
@@ -303,7 +249,6 @@ class ContractAndSmokeTests(unittest.TestCase):
                 try:
                     out_dir = root / out_name
                     pipeline = RakshaPipeline(
-                        ingestor=_StubIngestor(),
                         detector=_StubDetector(),
                         clinical_guard=_StubClinicalGuard(),
                         linker=_StubLinker(),
@@ -333,7 +278,7 @@ class ContractAndSmokeTests(unittest.TestCase):
                         os.environ["RAKSHA_SECRET"] = old
 
             report1, recs1, csv1 = run_with_secret("secret-alpha", "out1")
-            _, recs2, _ = run_with_secret("secret-alpha", "out2")
+            report2, recs2, _ = run_with_secret("secret-alpha", "out2")
             _, recs3, _ = run_with_secret("secret-beta", "out3")
 
             self.assertEqual(report1["counts"]["files_total"], 2)
@@ -349,6 +294,8 @@ class ContractAndSmokeTests(unittest.TestCase):
             self.assertIn(recs1[0]["patient"], csv1)
             self.assertIn("Ramipril 5 mg", csv1)
             self.assertIn("BP 150/90", csv1)
+
+            # Determinism across runs and key sensitivity
             self.assertEqual(recs1, recs2)
             self.assertNotEqual(recs1[0]["patient"], recs3[0]["patient"])
 

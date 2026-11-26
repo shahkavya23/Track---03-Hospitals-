@@ -24,6 +24,7 @@ from src.contracts import (
     SpanRole,
     TransformType,
 )
+from src.ingestion import IngestionConfig, UniversalIngestor
 
 
 def read_secret_key() -> bytes:
@@ -54,13 +55,21 @@ class RakshaPipeline:
         serializer: Optional[SafeSerializer] = None,
         policy_path: Optional[Path] = None,
     ) -> None:
-        self.ingestor = ingestor
+        if ingestor is not None:
+            self.ingestor = ingestor
+        else:
+            cfg = (
+                IngestionConfig.from_policy_file(policy_path)
+                if policy_path and policy_path.exists()
+                else IngestionConfig()
+            )
+            self.ingestor = UniversalIngestor(cfg)
+
         self.detector = detector
         self.clinical_guard = clinical_guard
         self.linker = linker
         self.privacy_engine = privacy_engine
         self.serializer = serializer
-        self.policy_path = policy_path
 
     def run(self, input_dir: Path, output_dir: Path) -> AuditMetrics:
         """Execute the full privacy firewall pipeline safely."""
@@ -70,7 +79,6 @@ class RakshaPipeline:
         missing = [
             name
             for name, stage in (
-                ("ingestor", self.ingestor),
                 ("detector", self.detector),
                 ("clinical_guard", self.clinical_guard),
                 ("linker", self.linker),
@@ -84,7 +92,6 @@ class RakshaPipeline:
                 f"Pipeline stages not yet integrated: {', '.join(missing)}"
             )
 
-        assert self.ingestor is not None
         assert self.detector is not None
         assert self.clinical_guard is not None
         assert self.linker is not None
