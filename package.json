@@ -1,0 +1,24 @@
+{
+  "name": "track---03-hospitals-",
+  "version": "1.0.0",
+  "description": "> Yugaantar DevForge — Track 3: **Secret Wards**  \r > Offline, CPU-only, LLM-free healthcare de-identification, cross-script patient linkage, and privacy-preserving transformation pipeline.",
+  "homepage": "https://github.com/shahkavya23/Track---03-Hospitals-#readme",
+  "bugs": {
+    "url": "https://github.com/shahkavya23/Track---03-Hospitals-/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shahkavya23/Track---03-Hospitals-.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}

@@ -1,21 +1,14 @@
-// Purpose: Main React container coordinating state, modular components, and API interactions.
 import React, { useState, useEffect } from 'react';
-import { Sparkles } from 'lucide-react';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
 import Header from './components/Header';
-import StatsBar from './components/StatsBar';
-import Navigation from './components/Navigation';
-import IngestTab from './components/tabs/IngestTab';
-import PipelineTab from './components/tabs/PipelineTab';
-import DiffTab from './components/tabs/DiffTab';
+import SanitizeWorkspace from './components/tabs/IngestTab';
 import LinkageTab from './components/tabs/LinkageTab';
-import ClinicalTab from './components/tabs/ClinicalTab';
-import QuarantineTab from './components/tabs/QuarantineTab';
-import ReportTab from './components/tabs/ReportTab';
+import AuditTab from './components/tabs/ReportTab';
 import * as api from './services/api';
 import './App.css';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('files');
+  const [activeTab, setActiveTab] = useState('sanitize');
   const [status, setStatus] = useState(null);
   const [files, setFiles] = useState([]);
   const [running, setRunning] = useState(false);
@@ -27,8 +20,8 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null);
 
-  const showToast = (msg) => {
-    setToast(msg);
+  const showToast = (msg, tone = 'success') => {
+    setToast({ msg, tone });
     setTimeout(() => setToast(null), 3500);
   };
 
@@ -77,22 +70,43 @@ export default function App() {
     }
   }, [selectedDiffFile]);
 
+  const handleRunPipeline = async (fileToInspect = selectedDiffFile) => {
+    setRunning(true);
+    try {
+      const data = await api.runPipeline();
+      if (data.success) {
+        setMetrics(data.metrics);
+        setReport(data.report);
+        setClusters(data.clusters || {});
+        await loadStatusAndFiles();
+        if (fileToInspect) {
+          setSelectedDiffFile(fileToInspect);
+          await loadDiffForFile(fileToInspect);
+        }
+        showToast('Sanitization complete');
+      } else {
+        showToast(data.error || 'Pipeline execution failed', 'error');
+      }
+    } catch (error) {
+      showToast(error.message || 'Pipeline communication error', 'error');
+    } finally {
+      setRunning(false);
+    }
+  };
+
   const handleLoadPreset = async (presetKey) => {
     try {
       const data = await api.loadPreset(presetKey);
       if (data.success) {
-        showToast(`Loaded Scenario: ${data.title}`);
         await loadStatusAndFiles();
-        setMetrics(null);
-        setReport(null);
-        setClusters({});
-        setDiffData(null);
-        if (data.loaded_files && data.loaded_files.length > 0) {
-          setSelectedDiffFile(data.loaded_files[0]);
+        const firstFile = data.loaded_files?.[0] || '';
+        if (firstFile) {
+          setSelectedDiffFile(firstFile);
         }
+        await handleRunPipeline(firstFile);
       }
     } catch (error) {
-      showToast(error.message || 'Error loading preset scenario');
+      showToast(error.message || 'Error loading scenario', 'error');
     }
   };
 
@@ -103,7 +117,7 @@ export default function App() {
     const selectedFiles = Array.from(uploadedFiles);
     const tooLargeFile = selectedFiles.find((file) => file.size > 200 * 1024 * 1024);
     if (tooLargeFile) {
-      showToast(`${tooLargeFile.name} exceeds the 200 MB upload limit.`);
+      showToast(`${tooLargeFile.name} exceeds the 200 MB limit`, 'error');
       event.target.value = '';
       return;
     }
@@ -136,9 +150,9 @@ export default function App() {
       const primaryFile = selectedFiles[0].name;
       setSelectedDiffFile(primaryFile);
       setUploadProgress({ total: selectedFiles.length, completed: selectedFiles.length, currentFile: primaryFile, percent: 100, processing: true });
-      await handleRunPipeline('diff', primaryFile);
+      await handleRunPipeline(primaryFile);
     } catch (error) {
-      showToast(error.message || 'File upload failed');
+      showToast(error.message || 'File upload failed', 'error');
     } finally {
       setUploadProgress(null);
     }
@@ -154,38 +168,8 @@ export default function App() {
         setSelectedDiffFile('');
         setDiffData(null);
       }
-    } catch (e) {
-      showToast(`Failed to remove ${filename}`);
-    }
-  };
-
-  const handleRunPipeline = async (destination = 'pipeline', fileToInspect = selectedDiffFile) => {
-    setRunning(true);
-    setActiveTab('pipeline');
-    try {
-      const data = await api.runPipeline();
-      if (data.success) {
-        setMetrics(data.metrics);
-        setReport(data.report);
-        setClusters(data.clusters || {});
-        await loadStatusAndFiles();
-        if (fileToInspect) {
-          setSelectedDiffFile(fileToInspect);
-          await loadDiffForFile(fileToInspect);
-        }
-        if (destination === 'diff') {
-          setActiveTab('diff');
-          showToast('Redacted output is ready to review.');
-        } else {
-          showToast('RAKSHA Privacy Firewall Run Completed!');
-        }
-      } else {
-        showToast(data.error || 'Pipeline execution failed');
-      }
-    } catch (error) {
-      showToast(error.message || 'Pipeline communication error');
-    } finally {
-      setRunning(false);
+    } catch {
+      showToast(`Failed to remove ${filename}`, 'error');
     }
   };
 
@@ -199,100 +183,80 @@ export default function App() {
       setDiffData(null);
       setSelectedDiffFile('');
       await loadStatusAndFiles();
-      showToast('Workspace reset.');
-    } catch (e) {
-      showToast('Failed to reset workspace');
+      showToast('Workspace cleared');
+    } catch {
+      showToast('Failed to reset workspace', 'error');
     }
   };
 
   const hasOutput = Boolean(metrics || report);
+  const quarantinedCount = metrics?.files_quarantined ?? report?.counts?.files_quarantined ?? 0;
+  const clustersCount = Object.keys(clusters).length || metrics?.records_linked || report?.counts?.records_linked || 0;
 
   return (
-    <div className={`raksha-shell page-${activeTab} min-h-screen bg-[#0B1120] text-slate-100 flex flex-col font-sans selection:bg-teal-500/30 selection:text-teal-200`}>
-      {/* Toast Notification */}
+    <div className="min-h-screen bg-[#111214] text-[#F4F4F5] flex flex-col font-sans">
       {toast && (
-        <div className="fixed top-5 right-5 z-50 bg-[#111C2E] text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-teal-500/40 animate-fade-in">
-          <Sparkles className="w-4 h-4 text-teal-400" />
-          <span className="font-semibold text-xs text-slate-200">{toast}</span>
+        <div
+          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg flex items-center gap-2 border text-xs font-medium animate-enter ${
+            toast.tone === 'error'
+              ? 'bg-[#1B1316] border-rose-500/30 text-rose-200'
+              : 'bg-[#17181C] border-white/[0.12] text-zinc-100'
+          }`}
+        >
+          {toast.tone === 'error' ? (
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" strokeWidth={1.5} />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" strokeWidth={1.5} />
+          )}
+          <span>{toast.msg}</span>
         </div>
       )}
 
-      {/* Top Header */}
       <Header
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
         status={status}
+        hasOutput={hasOutput}
+        filesCount={files.length}
+        quarantinedCount={quarantinedCount}
+        clustersCount={clustersCount}
+        running={running}
+        onRun={() => handleRunPipeline()}
         onReset={handleResetWorkspace}
       />
 
-      {/* KPI Stats Bar */}
-      <StatsBar
-        filesCount={files.length}
-        metrics={metrics}
-        report={report}
-        clustersCount={Object.keys(clusters).length || (metrics ? metrics.records_linked : 0)}
-      />
+      <main className="flex-1 w-full max-w-6xl mx-auto px-6 py-8">
+        <div className="animate-enter" key={activeTab}>
+          {activeTab === 'sanitize' && (
+            <SanitizeWorkspace
+              files={files}
+              metrics={metrics}
+              report={report}
+              running={running}
+              uploadProgress={uploadProgress}
+              selectedFile={selectedDiffFile}
+              diffData={diffData}
+              onSelectFile={setSelectedDiffFile}
+              onLoadPreset={handleLoadPreset}
+              onFileUpload={handleFileUpload}
+              onDeleteFile={handleDeleteFile}
+              onClearQueue={handleResetWorkspace}
+              onRun={() => handleRunPipeline()}
+              onOpenAudit={() => setActiveTab('audit')}
+            />
+          )}
 
-      {/* Navigation Tabs */}
-      <Navigation
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        filesCount={files.length}
-        hasOutput={hasOutput}
-      />
+          {activeTab === 'linkage' && (
+            <LinkageTab
+              clusters={clusters}
+              onGoSanitize={() => setActiveTab('sanitize')}
+            />
+          )}
 
-      {/* Active Tab View */}
-      <main className="raksha-main flex-1 max-w-7xl w-full mx-auto p-6 md:p-8">
-        {activeTab === 'files' && (
-          <IngestTab
-            files={files}
-            onLoadPreset={handleLoadPreset}
-            onFileUpload={handleFileUpload}
-            uploadProgress={uploadProgress}
-            onDeleteFile={handleDeleteFile}
-            onClearQueue={handleResetWorkspace}
-            onRun={handleRunPipeline}
-            running={running}
-          />
-        )}
-
-        {activeTab === 'pipeline' && (
-          <PipelineTab
-            filesCount={files.length}
-            metrics={metrics}
-            running={running}
-            onRun={handleRunPipeline}
-          />
-        )}
-
-        {activeTab === 'diff' && (
-          <DiffTab
-            files={files}
-            selectedFile={selectedDiffFile}
-            onSelectFile={setSelectedDiffFile}
-            diffData={diffData}
-          />
-        )}
-
-        {activeTab === 'linkage' && (
-          <LinkageTab
-            clusters={clusters}
-          />
-        )}
-
-        {activeTab === 'clinical' && (
-          <ClinicalTab />
-        )}
-
-        {activeTab === 'quarantine' && (
-          <QuarantineTab
-            report={report}
-          />
-        )}
-
-        {activeTab === 'report' && (
-          <ReportTab
-            report={report}
-          />
-        )}
+          {activeTab === 'audit' && (
+            <AuditTab report={report} />
+          )}
+        </div>
       </main>
     </div>
   );
