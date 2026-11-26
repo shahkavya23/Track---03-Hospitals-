@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Runtime / evaluation artifacts (never commit outputs or raw data)
+output/
+my_output/
+tmp/
+*.tmp
+*.bak
+data/raw/
+dev/input/
+
+# Secrets & environment
+.env
+.env.*
+*.key
+*.pem
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

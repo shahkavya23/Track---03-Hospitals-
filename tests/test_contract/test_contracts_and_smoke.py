@@ -1,0 +1,357 @@
+"""Contract invariant tests and stubbed foundation smoke test (Phase 1)."""
+
+from __future__ import annotations
+
+import csv
+import hashlib
+import hmac
+import io
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+from src.contracts import (
+    AuditMetrics,
+    DetectionSpan,
+    FieldNode,
+    FileFormat,
+    LinkageDecision,
+    ParseStatus,
+    PatientCluster,
+    PatientRecord,
+    PrivacyDecision,
+    ResolutionStatus,
+    SourceFile,
+    SpanRole,
+    TransformType,
+)
+from src.pipeline import RakshaPipeline
+
+
+class _StubIngestor:
+    """Explicit Phase 1 test stub simulating Member 1 ingestion on `main`."""
+
+    def ingest_directory(self, input_dir: Path) -> list[SourceFile]:
+        sources: list[SourceFile] = []
+        for idx, path in enumerate(sorted(p for p in input_dir.rglob("*") if p.is_file()), start=1):
+            rel = path.relative_to(input_dir).as_posix()
+            sha = hashlib.sha256(path.read_bytes()).hexdigest()
+            if path.suffix.lower() != ".csv":
+                sources.append(
+                    SourceFile(
+                        source_ref=f"src_{idx}",
+                        source_sha256=sha,
+                        relative_path=rel,
+                        sanitized_relative_path=None,
+                        format=FileFormat.UNSUPPORTED,
+                        encoding="unknown",
+                        parse_status=ParseStatus.QUARANTINED,
+                        quarantine_reason="unsupported format",
+                    )
+                )
+                continue
+            rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8"), newline="")))
+            headers = rows[0]
+            recs = [
+                PatientRecord(
+                    record_ref=f"rec_{idx}_{r_idx}",
+                    source_ref=f"src_{idx}",
+                    loc=f"row:{r_idx}",
+                    original_structure={"headers": headers, "cells": row},
+                    fields=[
+                        FieldNode(f"col:{c}:{headers[c]}", val, headers[c], True)
+                        for c, val in enumerate(row)
+                    ],
+                )
+                for r_idx, row in enumerate(rows[1:])
+            ]
+            sources.append(
+                SourceFile(
+                    source_ref=f"src_{idx}",
+                    source_sha256=sha,
+                    relative_path=rel,
+                    sanitized_relative_path=f"sanitized/{rel}",
+                    format=FileFormat.CSV,
+                    encoding="utf-8",
+                    parse_status=ParseStatus.PARSED,
+                    records=recs,
+                )
+            )
+        return sources
+
+
+class _StubDetector:
+    """Explicit test stub simulating Member 2 detection."""
+
+    def analyze_record(self, record: PatientRecord) -> list[DetectionSpan]:
+        spans: list[DetectionSpan] = []
+        for node in record.fields:
+            if node.header_key == "patient_name" and node.raw_value.strip():
+                spans.append(
+                    DetectionSpan(
+                        record_ref=record.record_ref,
+                        field_path=node.field_path,
+                        start=0,
+                        end=len(node.raw_value),
+                        category="PERSON_NAME",
+                        role=SpanRole.DIRECT_PII,
+                        confidence=1.0,
+                        detector_source="stub_detector",
+                    )
+                )
+                record.extracted_patient_attributes.setdefault("names", []).append(node.raw_value)
+            if node.header_key == "notes":
+                for term in ("Ramipril 5 mg", "BP 150/90"):
+                    idx = node.raw_value.find(term)
+                    if idx != -1:
+                        spans.append(
+                            DetectionSpan(
+                                record_ref=record.record_ref,
+                                field_path=node.field_path,
+                                start=idx,
+                                end=idx + len(term),
+                                category="CLINICAL",
+                                role=SpanRole.CLINICAL_PROTECTED,
+                                confidence=1.0,
+                                detector_source="stub_clinical",
+                            )
+                        )
+        return spans
+
+
+class _StubClinicalGuard:
+    """Explicit test stub simulating Member 2 clinical guard."""
+
+    def protect_clinical(
+        self, record: PatientRecord, spans: list[DetectionSpan]
+    ) -> tuple[list[DetectionSpan], list[str]]:
+        clinical = []
+        for span in spans:
+            if span.role == SpanRole.CLINICAL_PROTECTED:
+                for node in record.fields:
+                    if node.field_path == span.field_path:
+                        clinical.append(node.raw_value[span.start : span.end])
+        return list(spans), clinical
+
+
+class _StubLinker:
+    """Explicit test stub simulating Member 3 clustering."""
+
+    def link_records(
+        self, records: list[PatientRecord]
+    ) -> tuple[list[LinkageDecision], list[PatientCluster]]:
+        clusters: list[PatientCluster] = []
+        for idx, rec in enumerate(records):
+            names = rec.extracted_patient_attributes.get("names", [])
+            if names:
+                cid = f"clu_{idx}"
+                rec.cluster_ref = cid
+                clusters.append(
+                    PatientCluster(
+                        cluster_ref=cid,
+                        member_record_refs=(rec.record_ref,),
+                        resolution_status=ResolutionStatus.RESOLVED,
+                    )
+                )
+            else:
+                cid = f"clu_unres_{idx}"
+                rec.cluster_ref = cid
+                clusters.append(
+                    PatientCluster(
+                        cluster_ref=cid,
+                        member_record_refs=(rec.record_ref,),
+                        resolution_status=ResolutionStatus.UNRESOLVED,
+                    )
+                )
+        return [], clusters
+
+
+class _StubPrivacyEngine:
+    """Explicit test stub simulating Member 3 keyed-HMAC pseudonymization."""
+
+    def transform(
+        self,
+        records: list[PatientRecord],
+        clusters: list[PatientCluster],
+        secret_key: bytes,
+    ) -> list[PrivacyDecision]:
+        decisions: list[PrivacyDecision] = []
+        cluster_map = {c.cluster_ref: c for c in clusters}
+        for rec in records:
+            cluster = cluster_map.get(rec.cluster_ref or "")
+            if cluster and cluster.resolution_status == ResolutionStatus.RESOLVED:
+                seed_name = rec.extracted_patient_attributes["names"][0].encode("utf-8")
+                digest = hmac.new(secret_key, seed_name, hashlib.sha256).hexdigest()[:6].upper()
+                psn = f"PSN-{digest}"
+                cluster.pseudonym_id = psn
+                rec.pseudonym_id = psn
+                for span in rec.detections:
+                    if span.role == SpanRole.DIRECT_PII:
+                        decisions.append(
+                            PrivacyDecision(
+                                record_ref=rec.record_ref,
+                                field_path=span.field_path,
+                                start=span.start,
+                                end=span.end,
+                                transform_type=TransformType.PSEUDONYMIZE,
+                                replacement_value=psn,
+                            )
+                        )
+            else:
+                rec.pseudonym_id = None
+        return decisions
+
+
+class _StubSerializer:
+    """Explicit test stub for Phase 4/5 output contract smoke verification."""
+
+    def serialize_all(
+        self,
+        sources: list[SourceFile],
+        output_dir: Path,
+        metrics: AuditMetrics,
+    ) -> AuditMetrics:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "sanitized").mkdir(parents=True, exist_ok=True)
+
+        records_lines: list[str] = []
+        for src in sources:
+            if src.sanitized_relative_path is None:
+                continue
+            target = output_dir / src.sanitized_relative_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+
+            if src.records and isinstance(src.records[0].original_structure, dict):
+                headers = src.records[0].original_structure["headers"]
+                with target.open("w", encoding="utf-8", newline="") as handle:
+                    writer = csv.writer(handle)
+                    writer.writerow(headers)
+                    for rec in src.records:
+                        cells = list(rec.original_structure["cells"])
+                        for dec in rec.privacy_decisions:
+                            if dec.field_path.startswith("col:") and dec.replacement_value is not None:
+                                col_idx = int(dec.field_path.split(":")[1])
+                                cells[col_idx] = dec.replacement_value
+                        writer.writerow(cells)
+
+            for rec in src.records:
+                records_lines.append(
+                    json.dumps(
+                        {
+                            "file": src.sanitized_relative_path,
+                            "loc": rec.loc,
+                            "patient": rec.pseudonym_id,
+                        }
+                    )
+                )
+
+        (output_dir / "records.jsonl").write_text("\n".join(records_lines) + "\n", encoding="utf-8")
+        (output_dir / "report.json").write_text(
+            json.dumps(metrics.to_report_dict(), indent=2),
+            encoding="utf-8",
+        )
+        return metrics
+
+
+class ContractAndSmokeTests(unittest.TestCase):
+    def test_contract_invariants(self) -> None:
+        with self.assertRaises(ValueError):
+            DetectionSpan("rec_1", "doc", 5, 2, "NAME", SpanRole.DIRECT_PII, 0.9, "test")
+        with self.assertRaises(ValueError):
+            DetectionSpan("rec_1", "doc", 0, 2, "NAME", SpanRole.DIRECT_PII, 1.5, "test")
+        with self.assertRaises(ValueError):
+            PatientCluster("clu_1", ("rec_1",), ResolutionStatus.UNRESOLVED, pseudonym_id="PSN-123")
+
+    def test_pipeline_fails_closed_without_secret(self) -> None:
+        old = os.environ.pop("RAKSHA_SECRET", None)
+        try:
+            pipeline = RakshaPipeline(
+                ingestor=_StubIngestor(),
+                detector=_StubDetector(),
+                clinical_guard=_StubClinicalGuard(),
+                linker=_StubLinker(),
+                privacy_engine=_StubPrivacyEngine(),
+                serializer=_StubSerializer(),
+            )
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaises(RuntimeError):
+                    pipeline.run(Path(tmp), Path(tmp) / "out")
+        finally:
+            if old is not None:
+                os.environ["RAKSHA_SECRET"] = old
+
+    def test_stubbed_e2e_smoke_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            in_dir = root / "input"
+            (in_dir / "registration").mkdir(parents=True)
+            (in_dir / "discharge").mkdir(parents=True)
+
+            (in_dir / "registration" / "hospital.csv").write_text(
+                "patient_name,notes\n"
+                "Mohammad Arif,Ramipril 5 mg and BP 150/90\n"
+                ",Fever observation\n",
+                encoding="utf-8",
+            )
+            (in_dir / "discharge" / "scan.pdf").write_bytes(b"%PDF-1.4 fake binary")
+
+            def run_with_secret(secret: str, out_name: str) -> tuple[dict, list[dict], str]:
+                old = os.environ.get("RAKSHA_SECRET")
+                os.environ["RAKSHA_SECRET"] = secret
+                try:
+                    out_dir = root / out_name
+                    pipeline = RakshaPipeline(
+                        ingestor=_StubIngestor(),
+                        detector=_StubDetector(),
+                        clinical_guard=_StubClinicalGuard(),
+                        linker=_StubLinker(),
+                        privacy_engine=_StubPrivacyEngine(),
+                        serializer=_StubSerializer(),
+                    )
+                    pipeline.run(in_dir, out_dir)
+                    report_text = (out_dir / "report.json").read_text(encoding="utf-8")
+                    report = json.loads(report_text)
+                    recs = [
+                        json.loads(line)
+                        for line in (out_dir / "records.jsonl").read_text(encoding="utf-8").splitlines()
+                        if line.strip()
+                    ]
+                    sanitized_csv = (out_dir / "sanitized" / "registration" / "hospital.csv").read_text(
+                        encoding="utf-8"
+                    )
+                    self.assertFalse((out_dir / "sanitized" / "discharge" / "scan.pdf").exists())
+                    self.assertNotIn("scan.pdf", report_text)
+                    self.assertNotIn("Mohammad Arif", report_text)
+                    self.assertNotIn("Mohammad Arif", sanitized_csv)
+                    return report, recs, sanitized_csv
+                finally:
+                    if old is None:
+                        os.environ.pop("RAKSHA_SECRET", None)
+                    else:
+                        os.environ["RAKSHA_SECRET"] = old
+
+            report1, recs1, csv1 = run_with_secret("secret-alpha", "out1")
+            _, recs2, _ = run_with_secret("secret-alpha", "out2")
+            _, recs3, _ = run_with_secret("secret-beta", "out3")
+
+            self.assertEqual(report1["counts"]["files_total"], 2)
+            self.assertEqual(report1["counts"]["files_sanitized"], 1)
+            self.assertEqual(report1["counts"]["files_quarantined"], 1)
+            self.assertEqual(report1["counts"]["records_processed"], 2)
+            self.assertEqual(report1["counts"]["records_linked"], 1)
+
+            self.assertEqual(recs1[0]["loc"], "row:0")
+            self.assertEqual(recs1[1]["loc"], "row:1")
+            self.assertIsNone(recs1[1]["patient"])
+            self.assertTrue(recs1[0]["patient"].startswith("PSN-"))
+            self.assertIn(recs1[0]["patient"], csv1)
+            self.assertIn("Ramipril 5 mg", csv1)
+            self.assertIn("BP 150/90", csv1)
+            self.assertEqual(recs1, recs2)
+            self.assertNotEqual(recs1[0]["patient"], recs3[0]["patient"])
+
+
+if __name__ == "__main__":
+    unittest.main()

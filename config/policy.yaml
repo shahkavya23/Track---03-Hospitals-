@@ -1,0 +1,39 @@
+# RAKSHA Privacy & Ingestion Policy (v0.1.0-draft)
+# Structure owned by Member 1; detection & privacy rules coordinated with Members 2 & 3.
+
+version: "0.1.0"
+
+ingestion:
+  max_file_bytes: 52428800        # 50 MiB cap per file to stay safely within 4 GB RAM
+  max_json_depth: 64              # Guard against deeply nested JSON DoS
+  follow_symlinks: false          # Never follow symlinks outside or inside input root
+  empty_file_action: "quarantine" # "quarantine" failed/0-byte files rather than copying raw/empty
+  supported_extensions:
+    - ".csv"
+    - ".tsv"
+    - ".json"
+    - ".txt"
+  csv_allowed_delimiters:
+    - ","
+    - ";"
+    - "|"
+  encoding_fallbacks:
+    - "utf-8-sig"
+    - "utf-8"
+    - "utf-16"
+    - "cp1252"
+    - "iso-8859-1"
+
+# Coordinated placeholders for Member 2 (Detection & Clinical Integrity)
+detection:
+  languages: ["en", "hi", "hinglish"]
+  inspect_structured_keys: true
+  inspect_filenames: true
+  protect_clinical_spans: true
+
+# Coordinated placeholders for Member 3 (Linkage, HMAC & Quasi-Identifiers)
+privacy:
+  pseudonym_prefix: "PSN-"
+  hmac_algorithm: "sha256"
+  abstain_on_conflict: true       # Export patient: null when identity is uncertain
+  preserve_stay_duration: true    # Keep per-patient date shift consistent across records

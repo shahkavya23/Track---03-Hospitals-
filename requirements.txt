@@ -1,0 +1,13 @@
+# Core runtime (offline, CPU-only, no LLMs / >50M transformers)
+charset-normalizer>=3.3,<4
+PyYAML>=6.0,<7
+psutil>=5.9,<8
+jsonschema>=4.20,<5
+
+# Planned M2/M3 libraries (uncomment/pin as teammates integrate)
+# rapidfuzz>=3.9,<4
+# cryptography>=42.0,<45
+# phonenumbers>=8.13,<9
+
+# Testing
+pytest>=8.0,<9
