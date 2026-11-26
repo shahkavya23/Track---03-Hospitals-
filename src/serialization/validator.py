@@ -7,6 +7,7 @@ import base64
 import binascii
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -15,6 +16,21 @@ from src.contracts import FileFormat, ParseStatus, SourceFile
 
 class OutputValidationError(Exception):
     """Raised when serialized outputs violate format, schema, or leak invariants."""
+
+
+def _privacy_safe_clinical_form(value: str) -> str:
+    """Mirror typed identifier removal when validating a mixed clinical string."""
+    value = re.sub(
+        r"(?i)\b(?:MLC|FIR|GD|CASE)\s*(?:NO\.?)?\s*[A-Z0-9/-]+",
+        "[CASE_NO]",
+        value,
+    )
+    return re.sub(
+        r"(?i)(?:[;,.]\s*)?\b(?:oldest|youngest|first|only)\s+(?:patient|case)\b[^,;.!?]*|"
+        r"(?:[;,.]\s*)?\b(?:pehla\s+case|sabse\s+buzurg|only\s+patient|famous|vip|celebrity)\b[^,;.!?]*",
+        "",
+        value,
+    )
 
 
 def _collect_fhir_searchable_text(fhir_obj: Any, base_text: str) -> str:
@@ -95,7 +111,11 @@ def validate_serialized_output(
         # Verify clinical attributes survive intact.
         for rec in src.records:
             for clinical_val in rec.clinical_attributes:
-                if clinical_val and clinical_val not in searchable_text:
+                if (
+                    clinical_val
+                    and clinical_val not in searchable_text
+                    and _privacy_safe_clinical_form(clinical_val) not in searchable_text
+                ):
                     raise OutputValidationError("Protected clinical attribute missing in sanitized output")
 
     # 2. Cross-check records.jsonl count vs report.json records_processed.

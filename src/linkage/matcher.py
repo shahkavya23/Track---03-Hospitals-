@@ -173,6 +173,25 @@ def match_pair(
     shared_dobs = left_dobs & right_dobs
     dob_conflict = bool(left_dobs and right_dobs and not shared_dobs)
 
+    left_genders = _values(left, "genders")
+    right_genders = _values(right, "genders")
+    if left_genders and right_genders and left_genders.isdisjoint(right_genders):
+        return _decision(left, right, LinkageVerdict.NON_MATCH, -1.0, ("CONFLICT_SEX",))
+
+    left_ages = {int(v) for v in _values(left, "ages") if v.isdigit()}
+    right_ages = {int(v) for v in _values(right, "ages") if v.isdigit()}
+    if left_ages and right_ages and min(abs(a - b) for a in left_ages for b in right_ages) > 5:
+        return _decision(left, right, LinkageVerdict.NON_MATCH, -1.0, ("CONFLICT_AGE",))
+
+    left_names = _values(left, "name_keys")
+    right_names = _values(right, "name_keys")
+    left_relatives = _values(left, "relative_name_keys")
+    right_relatives = _values(right, "relative_name_keys")
+    if (left_names & right_relatives) or (right_names & left_relatives):
+        return _decision(left, right, LinkageVerdict.NON_MATCH, -1.0, ("STATED_FAMILY_RELATION",))
+    if shared_dobs and left_relatives & right_relatives and left_names and right_names and left_names.isdisjoint(right_names):
+        return _decision(left, right, LinkageVerdict.NON_MATCH, -1.0, ("POSSIBLE_TWINS",))
+
     if matching_global_types:
         evidence = [f"EXACT_ID_{item}" for item in matching_global_types]
         if dob_conflict:
@@ -215,26 +234,28 @@ def match_pair(
             ("CONFLICT_DOB", "EXACT_PHONE"),
         )
 
+    exact_name = bool(left_names & right_names)
+    fuzzy_name = _best_fuzzy_name_similarity(left_names, right_names) >= policy.fuzzy_name_threshold
+    shared_birth_year = bool(_values(left, "birth_years") & _values(right, "birth_years"))
+    identity_agreement = exact_name or fuzzy_name or bool(shared_dobs) or shared_birth_year
+
     score = 0.0
     evidence: list[str] = []
     if matching_local_types:
         score += policy.local_id_weight
         evidence.extend(f"EXACT_ID_{item}" for item in matching_local_types)
-    if shared_phones:
+    if shared_phones and identity_agreement:
         score += policy.phone_weight
         evidence.append("EXACT_PHONE")
     if shared_dobs:
         score += policy.dob_weight
         evidence.append("EXACT_DOB")
 
-    left_name_keys = _values(left, "name_keys")
-    right_name_keys = _values(right, "name_keys")
-    if left_name_keys & right_name_keys:
+    if exact_name:
         score += policy.exact_name_key_weight
         evidence.append("NAME_KEY")
     elif (
-        _best_fuzzy_name_similarity(left_name_keys, right_name_keys)
-        >= policy.fuzzy_name_threshold
+        fuzzy_name
     ):
         score += policy.fuzzy_name_weight
         evidence.append("FUZZY_NAME")
@@ -245,7 +266,9 @@ def match_pair(
         ("geo_keys", "GEO_KEY", policy.geography_weight),
     )
     for attribute, evidence_category, weight in supporting_attributes:
-        if _values(left, attribute) & _values(right, attribute):
+        if _values(left, attribute) & _values(right, attribute) and (
+            attribute == "birth_years" or identity_agreement
+        ):
             score += weight
             evidence.append(evidence_category)
 

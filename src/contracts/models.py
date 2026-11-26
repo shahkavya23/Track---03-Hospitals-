@@ -158,6 +158,7 @@ class AuditMetrics:
     records_quarantined: int = 0
     seconds: float = 0.0
     peak_rss_mb: float = 0.0
+    substitutions_by_type: dict[str, int] = field(default_factory=dict)
 
     def to_report_dict(self) -> dict[str, Any]:
         """Serialize strictly into the official report.json schema."""
@@ -176,4 +177,5 @@ class AuditMetrics:
             },
             "timing": {"seconds": round(self.seconds, 3)},
             "resources": {"peak_rss_mb": round(self.peak_rss_mb, 2)},
+            "substitutions_by_type": dict(sorted(self.substitutions_by_type.items())),
         }

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections import Counter
+import re
 from typing import Sequence
 
 from src.contracts import AuditMetrics, FileFormat, ParseStatus, SourceFile
@@ -58,6 +60,18 @@ class SafeOutputSerializer:
                 write_text_source(src, target_path)
             else:
                 raise ValueError(f"Unsupported format for serialization: {src.format}")
+
+        substitution_counts: Counter[str] = Counter()
+        for src in sources:
+            if src.parse_status != ParseStatus.PARSED or not src.sanitized_relative_path:
+                continue
+            rendered = (output_dir / src.sanitized_relative_path).read_text(encoding="utf-8")
+            substitution_counts.update(re.findall(r"\[([A-Z][A-Z_]+)\]", rendered))
+            substitution_counts["PSN"] += len(re.findall(r"\bPSN-[A-Z2-7]+\b", rendered))
+            substitution_counts["REC"] += len(re.findall(r"\bREC-[A-Z2-7]+\b", rendered))
+        metrics.substitutions_by_type = {
+            key: count for key, count in substitution_counts.items() if count
+        }
 
         write_records_jsonl(sources, output_dir)
         write_report_json(metrics, output_dir)

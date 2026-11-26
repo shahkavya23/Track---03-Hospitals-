@@ -7,6 +7,7 @@ import base64
 import copy
 import csv
 import json
+import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -148,7 +149,14 @@ def write_tabular_source(source: SourceFile, target_path: Path) -> None:
     first_struct = source.records[0].original_structure
     delimiter = "\t" if source.format == FileFormat.TSV else str(first_struct.get("delimiter", ","))
     orig_headers: list[str] = list(first_struct["headers"])
-    out_headers = list(orig_headers)
+    out_headers = [
+        re.sub(
+            r"(?i)(verified\s+by|printed\s+by|exported\s+by|typed\s+by)\s+(?:Sr\.?\s*)?[A-Z][\w.-]*(?:\s+[A-Z][\w.-]*){0,2}",
+            r"\1 [STAFF]",
+            re.sub(r"(?<!\d)(?:\+?\d[\d\s().-]{7,}\d)(?!\d)", "[PHONE]", h),
+        )
+        for h in orig_headers
+    ]
 
     # Apply header-level PII renames if present (`@header:<idx>` or `@header:<name>`).
     for rec in source.records:
@@ -164,8 +172,6 @@ def write_tabular_source(source: SourceFile, target_path: Path) -> None:
                         out_headers[idx] = dec.replacement_value
 
     sanitized_rows: list[list[str]] = []
-    needs_psn_column = False
-
     for rec in source.records:
         cells = list(rec.original_structure["cells"])
         new_cells: list[str] = []
@@ -177,14 +183,7 @@ def write_tabular_source(source: SourceFile, target_path: Path) -> None:
             updated, _ = apply_decisions_to_field(cell, rec, fpath)
             new_cells.append(updated)
 
-        if rec.pseudonym_id is not None and rec.pseudonym_id not in new_cells:
-            needs_psn_column = True
         sanitized_rows.append(new_cells)
-
-    if needs_psn_column:
-        out_headers.append("raksha_patient_id")
-        for rec, row in zip(source.records, sanitized_rows):
-            row.append(rec.pseudonym_id or "")
 
     with target_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, delimiter=delimiter, lineterminator="\n")

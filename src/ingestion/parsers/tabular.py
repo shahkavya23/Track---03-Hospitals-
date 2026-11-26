@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from collections import Counter
 from typing import Callable, Sequence
 
@@ -83,7 +84,7 @@ def parse_tabular_document(
     except csv.Error as exc:
         raise IngestionQuarantineError("malformed or truncated tabular file") from exc
 
-    # Drop completely empty trailing lines, keep real rows intact.
+    # Preserve logical empty rows; only physical blank lines parsed as [] are ignorable.
     non_empty_rows = [row for row in rows if row]
     if not non_empty_rows:
         raise IngestionQuarantineError("empty file")
@@ -95,8 +96,31 @@ def parse_tabular_document(
 
     records: list[PatientRecord] = []
     for row_idx, row in enumerate(non_empty_rows[1:]):
+        original_column_count = len(row)
+        # Recover a common real-world CSV defect: an unquoted comma inside the
+        # diagnosis shifts the trailing doctor/remarks cells.  A clinician cue
+        # is a semantic anchor, so the diagnosis fragments can be joined back
+        # without relying on any particular hospital's values.
+        doctor_columns = [
+            idx for idx, header in enumerate(headers)
+            if re.search(r"(?i)\b(?:doctor|physician|clinician|consultant)\b", header)
+        ]
+        if len(row) > len(headers) and doctor_columns:
+            expected_doctor = doctor_columns[0]
+            actual_doctor = next(
+                (idx for idx in range(max(0, expected_doctor - 1), len(row))
+                 if re.match(r"(?i)^\s*(?:dr\.?|doctor\b)", row[idx])),
+                None,
+            )
+            if actual_doctor is not None and actual_doctor > expected_doctor:
+                diagnosis_start = max(0, expected_doctor - 1)
+                row = (
+                    row[:diagnosis_start]
+                    + [delimiter.join(row[diagnosis_start:actual_doctor])]
+                    + row[actual_doctor:]
+                )
         record_ref = next_record_ref()
-        is_shifted = len(row) != len(headers)
+        is_shifted = original_column_count != len(headers)
 
         fields: list[FieldNode] = []
         for col_idx, cell_value in enumerate(row):
@@ -117,6 +141,9 @@ def parse_tabular_document(
                 )
             )
 
+        first_nonempty = next((cell.strip() for cell in row if cell.strip()), "")
+        is_empty_row = not first_nonempty
+        is_footer_row = bool(re.match(r"(?i)^(?:total\b|printed\s+by|exported\s+by)", first_nonempty))
         records.append(
             PatientRecord(
                 record_ref=record_ref,
@@ -132,10 +159,12 @@ def parse_tabular_document(
                     "headers": list(headers),
                     "delimiter": delimiter,
                     "expected_columns": len(headers),
-                    "actual_columns": len(row),
+                    "actual_columns": original_column_count,
                     "is_shifted_row": is_shifted,
                     "duplicate_headers": duplicate_headers,
                     "has_blank_headers": has_blank_headers,
+                    "is_empty_row": is_empty_row,
+                    "is_footer_row": is_footer_row,
                 },
             )
         )

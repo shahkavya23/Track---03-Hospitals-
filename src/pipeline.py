@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 import psutil
+import yaml
 
 from src.contracts import (
     AuditMetrics,
@@ -29,6 +30,7 @@ from src.ingestion import IngestionConfig, UniversalIngestor
 from src.clinical import ClinicalIntegrityGuard
 from src.detection import MultilingualPIIDetector
 from src.linkage.engine import ConservativeLinkageEngine
+from src.linkage.matcher import MatcherPolicy
 from src.privacy import AdaptivePrivacyEngine
 from src.serialization import SafeOutputSerializer
 
@@ -61,6 +63,10 @@ class RakshaPipeline:
         serializer: Optional[SafeSerializer] = None,
         policy_path: Optional[Path] = None,
     ) -> None:
+        privacy_cfg: dict = {}
+        if policy_path and policy_path.exists():
+            with policy_path.open("r", encoding="utf-8") as handle:
+                privacy_cfg = (yaml.safe_load(handle) or {}).get("privacy") or {}
         if ingestor is not None:
             self.ingestor = ingestor
         else:
@@ -78,10 +84,21 @@ class RakshaPipeline:
             if detector is not None
             else MultilingualPIIDetector(default_guard)
         )
-        self.linker = linker if linker is not None else ConservativeLinkageEngine()
-        self.privacy_engine = (
-            privacy_engine if privacy_engine is not None else AdaptivePrivacyEngine()
+        self.linker = linker if linker is not None else ConservativeLinkageEngine(
+            MatcherPolicy(match_threshold=float(privacy_cfg.get("merge_threshold", 0.8))),
+            ambiguity_margin=float(privacy_cfg.get("ambiguity_margin", 0.05)),
         )
+        if privacy_engine is not None:
+            self.privacy_engine = privacy_engine
+        else:
+            self.privacy_engine = AdaptivePrivacyEngine(
+                k_threshold=int(privacy_cfg.get("k_threshold", 3)),
+                age_band_width=int(privacy_cfg.get("age_band_width", 5)),
+                age_top_code=int(privacy_cfg.get("age_top_code", 90)),
+                date_shift_max_days=int(privacy_cfg.get("date_shift_max_days", 180)),
+                k_location=int(privacy_cfg.get("k_location", 5)),
+                household_shift=bool(privacy_cfg.get("household_shift", True)),
+            )
         self.serializer = serializer if serializer is not None else SafeOutputSerializer()
 
     def run(self, input_dir: Path, output_dir: Path) -> AuditMetrics:
@@ -114,6 +131,11 @@ class RakshaPipeline:
         sources: list[SourceFile] = self.ingestor.ingest_directory(input_dir)
         all_records: list[PatientRecord] = [
             record for source in sources for record in source.records
+        ]
+        export_records = [
+            record for record in all_records
+            if not record.field_metadata.get("is_empty_row")
+            and not record.field_metadata.get("is_footer_row")
         ]
 
         identifiers_detected = 0
@@ -154,12 +176,12 @@ class RakshaPipeline:
             files_total=len(sources),
             files_sanitized=files_sanitized,
             files_quarantined=files_quarantined,
-            records_processed=len(all_records),
+            records_processed=len(export_records),
             identifiers_detected=identifiers_detected,
-            records_linked=sum(1 for rec in all_records if rec.pseudonym_id is not None),
+            records_linked=sum(1 for rec in export_records if rec.pseudonym_id is not None),
             records_generalized=sum(
                 1
-                for rec in all_records
+                for rec in export_records
                 if any(
                     d.transform_type in (TransformType.GENERALIZE, TransformType.DATE_SHIFT)
                     for d in rec.privacy_decisions
@@ -167,7 +189,7 @@ class RakshaPipeline:
             ),
             records_suppressed=sum(
                 1
-                for rec in all_records
+                for rec in export_records
                 if any(d.transform_type == TransformType.SUPPRESS for d in rec.privacy_decisions)
             ),
             records_quarantined=0,
