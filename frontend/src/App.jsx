@@ -26,6 +26,7 @@ export default function App() {
   const [diffData, setDiffData] = useState(null);
   const [toast, setToast] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [clinicalEntities, setClinicalEntities] = useState([]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -109,19 +110,29 @@ export default function App() {
     }
 
     setRunning(true);
-    showToast(`Ingesting & validating ${selectedFiles.length} file(s)...`);
+    showToast(`Resetting workspace and ingesting ${selectedFiles.length} file(s)...`);
     try {
+      // Reset workspace first so old files don't contaminate the new run
+      await api.resetWorkspace();
+      setFiles([]);
+      setMetrics(null);
+      setReport(null);
+      setClusters({});
+      setDiffData(null);
+      setClinicalEntities([]);
+
+      // Upload all selected files
       for (const file of selectedFiles) {
         const uploadRes = await api.uploadFile(file);
         if (uploadRes.is_valid === false) {
-          showToast(`Ingestion Warning: ${file.name} quarantined (${uploadRes.quarantine_reason || 'unsupported'})`);
+          showToast(`Warning: ${file.name} quarantined (${uploadRes.quarantine_reason || 'unsupported format'})`);
         }
       }
       await loadStatusAndFiles();
       if (selectedFiles.length > 0) {
         setSelectedDiffFile(selectedFiles[0].name);
       }
-      showToast(`Files validated. Running Privacy Firewall Pipeline...`);
+      showToast(`Running Privacy Firewall Pipeline on ${selectedFiles.length} file(s)...`);
       await handleRunPipeline(selectedFiles[0]?.name);
     } catch (error) {
       showToast(error.message || 'File upload failed');
@@ -186,6 +197,7 @@ export default function App() {
       setClusters({});
       setDiffData(null);
       setSelectedDiffFile('');
+      setClinicalEntities([]);
       await loadStatusAndFiles();
       showToast('Workspace reset.');
     } catch (e) {
@@ -267,7 +279,7 @@ export default function App() {
         )}
 
         {activeTab === 'clinical' && (
-          <ClinicalTab />
+          <ClinicalTab clinicalEntities={clinicalEntities} />
         )}
 
         {activeTab === 'quarantine' && (
