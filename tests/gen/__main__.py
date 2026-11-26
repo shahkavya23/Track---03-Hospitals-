@@ -7,13 +7,14 @@ from datetime import date, timedelta
 from pathlib import Path
 from .templates import TUNE
 from .holdout import HOLDOUT
+from .surfaces import add_surfaces
 
 
 def write_json(path, obj):
     path.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + '\n', encoding='utf-8')
 
 
-def generate(seed, patients, profile, out):
+def generate(seed, patients, profile, out, surface_variants=0):
     rng = random.Random(seed)
     template = TUNE if profile == 'tune' else HOLDOUT
     inp, truth = out / 'input', out / 'truth'
@@ -67,10 +68,12 @@ def generate(seed, patients, profile, out):
                                ('archive.zip', b'PK\x03\x04'), ('empty.txt', b'')]:
         (inp / filename).write_bytes(content)
         statuses[filename] = 'quarantined'
+    add_surfaces(inp, template, profile, seed, surface_variants, inventory, statuses)
     write_json(truth / 'entities.json', entities)
     write_json(truth / 'file_status.json', statuses)
     write_json(truth / 'canaries.json', canaries)
     write_json(truth / 'manifest.json', dict(seed=seed, patients=patients, profile=profile,
+        surface_variants=surface_variants,
         coverage=['namesakes', 'shared_household_phone', 'cross_hospital', 'csv', 'quarantine_bait'],
         unsupported=['twins', 'newborns', 'nested_json', 'fhir', 'multiscript', 'legacy_encodings']))
     for name, values in [('records', records), ('pii_inventory', inventory), ('protected', protected), ('intervals', intervals)]:
@@ -83,5 +86,6 @@ if __name__ == '__main__':
     parser.add_argument('--patients', type=int, default=300)
     parser.add_argument('--profile', choices=['tune', 'holdout'], required=True)
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--surface-variants', type=int, default=60)
     args = parser.parse_args()
-    generate(args.seed, args.patients, args.profile, args.out)
+    generate(args.seed, args.patients, args.profile, args.out, args.surface_variants)

@@ -11,21 +11,30 @@ from tests.score import score
 def run(root):
     repo = Path(__file__).resolve().parents[1]
     table = []
+    revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
     env = dict(os.environ, RAKSHA_SECRET='measurement-only-fixed-key')
     for seed in range(1, 7):
         profile = 'tune' if seed <= 3 else 'holdout'
         base = root / f'{profile}-{seed}'
-        generate(seed, 300, profile, base)
+        generate(seed, 300, profile, base, surface_variants=60)
         outputs, exits = [], []
         for attempt in range(2):
             out = base/f'output-{attempt}'
             # Runtime receives only the input subtree; subprocess output is
             # discarded to avoid inspecting holdout examples.
-            result = subprocess.run([sys.executable, str(repo/'main.py'), '--input',
-                str((base/'input').resolve()), '--output', str(out.resolve())],
-                env=env, cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            out.mkdir(parents=True, exist_ok=True)
+            try:
+                result = subprocess.run([sys.executable, '-m', 'tests.guarded_runtime', str(repo/'main.py'), '--input',
+                    str((base/'input').resolve()), '--output', str(out.resolve())],
+                    env=env, cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    timeout=900)
+                (out/'runtime.log').write_bytes(result.stdout + result.stderr)
+                exit_code = result.returncode
+            except subprocess.TimeoutExpired as exc:
+                (out/'runtime.log').write_bytes((exc.stdout or b'') + (exc.stderr or b''))
+                exit_code = 124
             outputs.append(out)
-            exits.append(result.returncode)
+            exits.append(exit_code)
         def comparable(out):
             content = {}
             for p in sorted(out.rglob('*')):
@@ -38,7 +47,8 @@ def run(root):
                         raw = json.dumps(report, sort_keys=True).encode()
                     content[p.relative_to(out).as_posix()] = raw
             return content
-        metadata = dict(exit_code=max(exits), deterministic=comparable(outputs[0]) == comparable(outputs[1]))
+        metadata = dict(exit_code=max(exits), deterministic=comparable(outputs[0]) == comparable(outputs[1]),
+                        pipeline_revision=revision, seed=seed, profile=profile)
         (outputs[0]/'measurement.json').write_text(json.dumps(metadata))
         card = score(base/'truth', outputs[0])
         (base/'scorecard.json').write_text(json.dumps(card, sort_keys=True, indent=2))

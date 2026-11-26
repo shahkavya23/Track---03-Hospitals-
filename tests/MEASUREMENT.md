@@ -4,6 +4,38 @@ This is an initial CSV benchmark, not the full competition measurement system.
 No pipeline fixes were made while building it. Scores must not be used as evidence
 that unimplemented formats or attack models pass.
 
+## V2 additions (measurement/harness-v2)
+
+The generator optionally adds 60 metadata probes across header, key, filename,
+base64 text attachment, free text, FHIR narrative and TSV cell surfaces. Probes
+include Latin/Devanagari/Urdu/Gurmukhi digits and UTF-8/BOM/UTF-16 LE/BE/cp1252
+encodings. These are metadata probes, not full clinical FHIR/JSON record oracles.
+Generated manifests explicitly record probe counts. The frozen holdout template
+file is unchanged; its hash normalizes Git LF/CRLF conversion only.
+
+Scoring excludes k-supported localities from direct-PII recall, decodes textual
+base64 for leak scanning, accounts for raw copies separately, checks quarantine
+reports by input SHA-256 and checks five recomputable report counts. Reliability
+requires measured determinism, success, <=900 seconds and <=4096 MB. Full FHIR
+schema validation and all-format structural scoring are still outstanding.
+
+Found independently: valid shared localities were falsely counted as leaks; Git
+line-ending conversion broke the frozen-template test; JSON-escaped and base64
+PII were not included in the searchable view; success alone earned resource-limit
+credit. These are scorer fixes, not sanitizer changes. New parameterized scanner,
+attachment and oracle-access tests exercise 160 variants.
+
+An audit hook in the benchmark subprocess denies any open of a path containing
+`truth`, including resolved link paths. This is benchmark access instrumentation,
+not an operating-system security sandbox. Runtime stdout/stderr are captured in
+the scored output tree and subprocess execution has a 900-second timeout.
+
+The pre-existing family regression currently fails on pipeline e6a1909 (quarantine);
+it has deliberately not been fixed in this measurement-only change. Matrix V2
+numbers cannot be treated as directly comparable to V1: both the probe inventory
+and scoring definitions changed. Do not apply the 1-point pipeline acceptance
+rule across different benchmark versions.
+
 ## Commands
 
 ```powershell

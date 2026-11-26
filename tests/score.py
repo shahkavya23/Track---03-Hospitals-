@@ -1,5 +1,6 @@
 """Independent truth-based measurement. Runtime code must never import this module."""
 import argparse
+import base64
 from collections import Counter, defaultdict
 import csv
 from datetime import datetime
@@ -12,6 +13,9 @@ import unicodedata
 
 
 def norm(value):
+    value = value.translate(str.maketrans({'А':'A','В':'B','С':'C','Е':'E','Н':'H','К':'K',
+        'М':'M','О':'O','Р':'P','Т':'T','Х':'X','а':'a','с':'c','е':'e','о':'o','р':'p','х':'x',
+        'Α':'A','Β':'B','Ε':'E','Ο':'O','Ρ':'P','Χ':'X'}))
     return ''.join(str(unicodedata.digit(c)) if c.isdigit() else c for c in
                    unicodedata.normalize('NFKC', value).casefold()
                    if not c.isspace() and c not in '-\u200b\u200c\u200d')
@@ -25,6 +29,34 @@ def ratio(a, b):
     return a / b if b else 0.0
 
 
+def searchable_artifact(path):
+    text = path.read_text(encoding='utf-8', errors='replace')
+    if path.suffix.lower() != '.json':
+        return text
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        return text
+    chunks = [text]
+    stack = [payload]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, dict):
+            for key, value in item.items():
+                chunks.append(key)
+                if key.casefold() in {'data', 'bytes_b64', 'attachment_base64'} and isinstance(value, str):
+                    try:
+                        chunks.append(base64.b64decode(value, validate=True).decode('utf-8'))
+                    except (ValueError, UnicodeError):
+                        pass
+                stack.append(value)
+        elif isinstance(item, list):
+            stack.extend(item)
+        elif isinstance(item, str):
+            chunks.append(item)
+    return '\n'.join(chunks)
+
+
 def score(truth, output):
     records = lines(truth / 'records.jsonl')
     pii = lines(truth / 'pii_inventory.jsonl')
@@ -33,7 +65,7 @@ def score(truth, output):
     statuses = json.loads((truth / 'file_status.json').read_text())
     canaries = json.loads((truth / 'canaries.json').read_text())
     paths = sorted(p for p in output.rglob('*') if p.is_file() and p.name != 'scorecard.json')
-    all_text = '\n'.join(p.relative_to(output).as_posix() + '\n' + p.read_text(encoding='utf-8', errors='replace') for p in paths)
+    all_text = '\n'.join(p.relative_to(output).as_posix() + '\n' + searchable_artifact(p) for p in paths)
     searchable = norm(all_text)
     rendered, parse_errors = {}, 0
     for filename in statuses:
@@ -53,7 +85,16 @@ def score(truth, output):
 
     breakdown = defaultdict(lambda: [0, 0])
     leaks = []
+    locality_support = Counter(p['locality'] for p in entities.values())
+    excluded_qi = 0
+    scored_pii = []
     for item in pii:
+        # A k-supported locality is permitted utility, not a direct-PII leak.
+        # Count distinct truth persons, never repeated hospital appearances.
+        if item['type'] == 'LOCALITY' and locality_support[item['value']] >= 5:
+            excluded_qi += 1
+            continue
+        scored_pii.append(item)
         hit = norm(item['value']) in searchable
         for group in ('type', 'surface', 'script'):
             key = group + ':' + item[group]
@@ -61,7 +102,7 @@ def score(truth, output):
             breakdown[key][1] += 1
         if hit:
             leaks.append({k: item[k] for k in ('file', 'loc', 'type', 'surface', 'script')})
-    detection = 100 * ratio(len(pii)-len(leaks), len(pii))
+    detection = 100 * ratio(len(scored_pii)-len(leaks), len(scored_pii))
     # Missing releases do not earn detection credit for deleting all records.
     availability = ratio(sum(bool(row_at(r)) for r in records), len(records))
     detection *= availability
@@ -125,15 +166,47 @@ def score(truth, output):
     validity = 100 * ratio(valid, len(expected_shapes))
     report_path = output / 'report.json'
     report = json.loads(report_path.read_text()) if report_path.exists() else {}
+    file_reports = {entry['input_sha256']: entry for entry in report.get('files', [])}
+    input_root = truth.parent / 'input'
+    quarantine_ok = 0
+    raw_copies = []
+    for filename, expected in statuses.items():
+        original = input_root / filename
+        digest = hashlib.sha256(original.read_bytes()).hexdigest()
+        entry = file_reports.get(digest, {})
+        path = output / entry.get('output', '') if entry.get('output') else None
+        quarantine_ok += bool(entry.get('status') == expected and (
+            (expected == 'quarantined' and path is None and not (output/'sanitized'/filename).exists())
+            or (expected == 'sanitized' and path is not None and path.is_file())))
+        candidate = output/'sanitized'/filename
+        if expected == 'sanitized' and candidate.is_file() and candidate.read_bytes() == original.read_bytes():
+            raw_copies.append(filename)
+    declared = report.get('counts', {})
+    actual_lines = lines(output/'records.jsonl')
+    count_checks = {
+        'files_total': len(statuses),
+        'files_sanitized': sum(entry.get('status') == 'sanitized' for entry in file_reports.values()),
+        'files_quarantined': sum(entry.get('status') == 'quarantined' for entry in file_reports.values()),
+        'records_processed': len(actual_lines),
+        'records_linked': sum(bool(row.get('patient')) for row in actual_lines),
+    }
+    count_mismatches = [key for key, value in count_checks.items() if declared.get(key) != value]
+    validity = (validity + 100*ratio(quarantine_ok,len(statuses)) +
+                (100 if not count_mismatches else 0)) / 3
     run = json.loads((output / 'measurement.json').read_text()) if (output / 'measurement.json').exists() else {}
-    reliability = 100.0 if run.get('exit_code') == 0 and run.get('deterministic') is True else 0.0
+    within_limits = (report.get('timing', {}).get('seconds', float('inf')) <= 900 and
+                     report.get('resources', {}).get('peak_rss_mb', float('inf')) <= 4096)
+    reliability = 100.0 if run.get('exit_code') == 0 and run.get('deterministic') is True and within_limits else 0.0
     canary_hits = sorted({value for value in canaries if norm(value) in searchable})
-    penalty = 20 * len(canary_hits)
+    penalty = 20 * len(canary_hits) + 10 * len(raw_copies)
     categories = dict(privacy=privacy, pii_detection=detection, medical=medical,
                       identity=identity, validity=validity, speed_reliability=reliability)
-    return dict(categories={k: round(v, 3) for k,v in categories.items()},
+    return dict(score_version='csv-plus-metadata-v2', categories={k: round(v, 3) for k,v in categories.items()},
                 total=round(max(0, sum(categories.values())/6-penalty), 3),
-                canary_count=len(canary_hits), canary_penalty=penalty,
+                canary_count=len(canary_hits), canary_penalty=20*len(canary_hits),
+                penalty_breakdown={'canary': 20*len(canary_hits), 'raw_copy': 10*len(raw_copies)},
+                raw_copy_count=len(raw_copies), quarantine_accuracy=ratio(quarantine_ok,len(statuses)),
+                report_count_mismatches=count_mismatches, permitted_locality_observations=excluded_qi,
                 pii_recall={k: ratio(a,b) for k,(a,b) in sorted(breakdown.items())},
                 protected_recall=survival, interval_exactness=ratio(interval_ok,len(intervals)),
                 age_truthfulness=ratio(ages_ok,len(records)), absolute_date_token_rate=ratio(date_tokens,2*len(intervals)),
@@ -145,7 +218,7 @@ def score(truth, output):
                 runtime=report.get('timing'), resources=report.get('resources'),
                 limitations=['CSV-only structural and interval scoring', 'FHIR schema validator not installed',
                 'attack omits admission month and LOS until independent date decoding is available',
-                'shift-inference, raw-copy penalties, event-count validation and null reasons unimplemented'])
+                'shift-inference, applied-event validation and null reasons unimplemented'])
 
 
 if __name__ == '__main__':
