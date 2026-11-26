@@ -1,146 +1,134 @@
-// Purpose: Tab 2 - 7-Stage Architectural Firewall Pipeline with live progress and execution runner.
 import React from 'react';
-import { Activity, Play, CheckCircle2, Clock, ShieldCheck, Cpu } from 'lucide-react';
+import { Play, CheckCircle2, Clock } from 'lucide-react';
 
-export default function PipelineTab({ filesCount, metrics, running, onRun }) {
+export default function PipelineTab({ filesCount, metrics, report, running, onRun }) {
+  const hasCompleted = Boolean(metrics || report);
+
   const STAGES = [
     {
-      step: 'Stage 1',
-      name: 'Universal Ingestion & Sandbox Isolation',
-      desc: 'Enforces 200MB directory limits, detects zip bombs & symlinks, isolates parser memory.',
-      badge: 'Sandbox Active',
-      status: filesCount > 0 ? 'COMPLETE' : 'PENDING',
+      num: '01',
+      name: 'Universal ingestion and sandbox isolation',
+      desc: 'Enforces 200 MB directory limits, blocks zip bombs and symlinks, and isolates parser memory.',
+      role: 'Sandbox',
+      status: filesCount > 0 ? 'Complete' : 'Standby',
     },
     {
-      step: 'Stage 2',
-      name: 'Encoding Detection & Magic Byte Validation',
-      desc: 'Auto-detects UTF-8, Latin-1, UTF-16, validates CSV / TSV / JSON / FHIR R4 schemas, and isolates corrupt encodings.',
-      badge: 'Multilingual Decode',
-      status: filesCount > 0 ? 'COMPLETE' : 'PENDING',
+      num: '02',
+      name: 'Encoding detection and schema validation',
+      desc: 'Detects UTF-8, Latin-1, and UTF-16 encodings, validates CSV, TSV, JSON, and FHIR R4 schemas, and isolates corrupt bytes.',
+      role: 'Decode',
+      status: filesCount > 0 ? 'Complete' : 'Standby',
     },
     {
-      step: 'Stage 3',
-      name: 'Multilingual PII & Quasi-Identifier Detection',
-      desc: 'High-recall detection for English & Devanagari names, ABHA, Aadhaar, PAN, phones, dates, and postal codes.',
-      badge: 'Zero LLM Detection',
-      status: metrics ? 'COMPLETE' : running ? 'PROCESSING' : 'PENDING',
+      num: '03',
+      name: 'Multilingual PII and quasi-identifier detection',
+      desc: 'Rule and context detection for English and Devanagari names, ABHA, Aadhaar, PAN, phones, dates, and PINs.',
+      role: 'Detection',
+      status: hasCompleted ? 'Complete' : running ? 'Running' : 'Standby',
     },
     {
-      step: 'Stage 4',
-      name: 'Clinical Integrity Guard Override',
-      desc: 'Cross-checks detections against medical vocabularies; strictly preserves vital signs, medications, and dosages.',
-      badge: '100% Medical Safety',
-      status: metrics ? 'COMPLETE' : running ? 'PROCESSING' : 'PENDING',
+      num: '04',
+      name: 'Clinical integrity guard override',
+      desc: 'Cross-checks spans against medical vocabularies so vital signs, medications, and dosages remain untouched.',
+      role: 'Clinical guard',
+      status: hasCompleted ? 'Complete' : running ? 'Running' : 'Standby',
     },
     {
-      step: 'Stage 5',
-      name: 'Conservative Patient Record Linkage',
-      desc: 'Blocks and matches records on ABHA and deterministic attributes across hospitals without false merges.',
-      badge: 'Deterministic Matching',
-      status: metrics ? 'COMPLETE' : running ? 'PROCESSING' : 'PENDING',
+      num: '05',
+      name: 'Conservative patient record linkage',
+      desc: 'Blocks and matches records on ABHA and deterministic attributes across hospitals without transitive false merges.',
+      role: 'Linkage',
+      status: hasCompleted ? 'Complete' : running ? 'Running' : 'Standby',
     },
     {
-      step: 'Stage 6',
-      name: 'HMAC-SHA256 Pseudonymization & Date Shifting',
-      desc: 'Issues secret-keyed pseudonyms (PSN-...) and shifts patient timelines uniformly to preserve longitudinal validity.',
-      badge: 'Keyed Pseudonymization',
-      status: metrics ? 'COMPLETE' : running ? 'PROCESSING' : 'PENDING',
+      num: '06',
+      name: 'HMAC-SHA256 pseudonymization and date shifting',
+      desc: 'Issues secret-keyed pseudonyms and shifts patient timelines uniformly to preserve clinical intervals.',
+      role: 'Pseudonym',
+      status: hasCompleted ? 'Complete' : running ? 'Running' : 'Standby',
     },
     {
-      step: 'Stage 7',
-      name: 'Safe Output Serialization & Audit Telemetry',
-      desc: 'Performs reverse-offset text splicing, emits sanitized records, report.json, and records.jsonl with zero canary leaks.',
-      badge: 'Verified Clean Output',
-      status: metrics ? 'COMPLETE' : running ? 'PROCESSING' : 'PENDING',
+      num: '07',
+      name: 'Fail-closed publication gate and telemetry',
+      desc: 'Applies reverse-offset splicing, verifies zero residual identifiers in memory, and writes report.json.',
+      role: 'Publish gate',
+      status: hasCompleted ? 'Complete' : running ? 'Running' : 'Standby',
     },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="bg-[#111C2E] border border-[#1E293B] rounded-xl p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-[#1E293B]">
-          <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <Activity className="w-5 h-5 text-teal-400" />
-              RAKSHA 7-Stage Architectural Pipeline
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              Guarantees zero raw PII leaks across offline processing with CPU-friendly execution and HMAC pseudonymization.
-            </p>
-          </div>
-
-          <button
-            onClick={onRun}
-            disabled={running || filesCount === 0}
-            className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shadow-lg ${
-              running || filesCount === 0
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-                : 'bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 shadow-teal-500/20'
-            }`}
-          >
-            <Play className={`w-3.5 h-3.5 ${running ? 'animate-spin' : 'fill-slate-950'}`} />
-            {running ? 'Processing Pipeline...' : 'Run Full Firewall Pipeline'}
-          </button>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base font-medium text-zinc-100">
+            Seven-stage firewall ledger
+          </h2>
+          <p className="text-xs text-zinc-400 mt-1">
+            Deterministic, CPU-only execution with fail-closed residual verification
+          </p>
         </div>
 
-        <div className="space-y-3">
-          {STAGES.map((st, i) => {
-            const isDone = st.status === 'COMPLETE';
-            const isRunning = st.status === 'PROCESSING';
+        <button
+          type="button"
+          onClick={() => onRun('pipeline')}
+          disabled={running || filesCount === 0}
+          className="h-9 px-4 rounded-lg text-xs font-medium transition-colors duration-150 inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-[#F4F4F5] hover:bg-white text-[#111214] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+        >
+          <Play className="w-4 h-4" strokeWidth={1.5} />
+          <span>{running ? 'Running pipeline' : 'Run full pipeline'}</span>
+        </button>
+      </div>
 
-            return (
-              <div
-                key={st.step}
-                className={`p-4 rounded-xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 ${
-                  isDone
-                    ? 'bg-[#0B1120] border-[#1E3A5F]'
-                    : isRunning
-                    ? 'bg-teal-500/5 border-teal-500/40 shadow-inner'
-                    : 'bg-[#0B1120]/60 border-[#1E293B] opacity-75'
-                }`}
-              >
-                <div className="flex items-start gap-3.5">
-                  <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold font-mono shrink-0 ${
-                      isDone
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : isRunning
-                        ? 'bg-teal-500 text-slate-950 animate-pulse'
-                        : 'bg-slate-800 text-slate-500 border border-slate-700'
-                    }`}
-                  >
-                    0{i + 1}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-xs font-bold text-white">{st.name}</h4>
-                      <span className="text-[10px] font-mono px-2 py-0.2 rounded bg-[#111C2E] text-slate-400 border border-[#1E293B]">
-                        {st.badge}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">{st.desc}</p>
-                  </div>
-                </div>
+      <div className="bg-[#17181C] border border-white/[0.08] rounded-xl divide-y divide-white/[0.08] overflow-hidden">
+        {STAGES.map((st) => {
+          const isDone = st.status === 'Complete';
+          const isRunning = st.status === 'Running';
 
-                <div className="shrink-0 flex items-center justify-end">
-                  <span
-                    className={`text-[11px] font-mono font-bold px-2.5 py-1 rounded-md uppercase tracking-wider flex items-center gap-1.5 ${
-                      isDone
-                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                        : isRunning
-                        ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40 animate-pulse'
-                        : 'bg-slate-800/80 text-slate-500 border border-slate-700/60'
-                    }`}
-                  >
-                    {isDone && <CheckCircle2 className="w-3.5 h-3.5" />}
-                    {isRunning && <Clock className="w-3.5 h-3.5 animate-spin" />}
-                    {st.status}
-                  </span>
+          return (
+            <div
+              key={st.num}
+              className={`p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors duration-150 ${
+                isRunning ? 'bg-emerald-500/[0.04]' : 'hover:bg-white/[0.02]'
+              }`}
+            >
+              <div className="flex items-start gap-4">
+                <span
+                  className={`text-xs font-mono tabular-nums pt-0.5 w-6 shrink-0 ${
+                    isDone ? 'text-emerald-400' : isRunning ? 'text-zinc-100' : 'text-zinc-500'
+                  }`}
+                >
+                  {st.num}
+                </span>
+
+                <div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h3 className="text-sm font-medium text-zinc-100">{st.name}</h3>
+                    <span className="text-xs font-mono text-zinc-500">
+                      {st.role}
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{st.desc}</p>
                 </div>
               </div>
-            );
-          })}
-        </div>
+
+              <div className="shrink-0 flex items-center gap-2 text-xs font-mono">
+                {isDone && <CheckCircle2 className="w-4 h-4 text-emerald-400" strokeWidth={1.5} />}
+                {isRunning && <Clock className="w-4 h-4 text-zinc-300" strokeWidth={1.5} />}
+                <span
+                  className={
+                    isDone
+                      ? 'text-emerald-400'
+                      : isRunning
+                      ? 'text-zinc-100'
+                      : 'text-zinc-500'
+                  }
+                >
+                  {st.status}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,95 +1,40 @@
-// Purpose: KPI metric cards displaying live system statistics with refined visual hierarchy.
 import React from 'react';
-import { FileText, CheckCircle2, AlertTriangle, ShieldAlert, Network, Clock } from 'lucide-react';
 
 export default function StatsBar({ filesCount, metrics, report, clustersCount }) {
-  const sanitizedCount = metrics?.files_sanitized ?? (report ? report.files_sanitized : 0);
-  const quarantinedCount = metrics?.files_quarantined ?? (report ? report.files_quarantined : 0);
-  const detectedCount = metrics?.identifiers_detected ?? 0;
-  const runtimeDisplay = metrics ? `${metrics.seconds}s` : '0.00s';
-  const rssDisplay = metrics ? `${metrics.peak_rss_mb} MB` : '0 MB';
+  const counts = report?.counts || {};
+  const sanitizedCount = metrics?.files_sanitized ?? counts.files_sanitized ?? 0;
+  const quarantinedCount = metrics?.files_quarantined ?? counts.files_quarantined ?? 0;
+  const detectedCount = metrics?.identifiers_detected ?? counts.identifiers_detected ?? 0;
+  const seconds = metrics?.seconds ?? report?.timing?.seconds;
+  const peakRss = metrics?.peak_rss_mb ?? report?.resources?.peak_rss_mb;
 
-  const CARDS = [
-    {
-      label: 'Input Files',
-      value: filesCount,
-      sublabel: 'Staged in queue',
-      icon: FileText,
-      accentColor: 'text-cyan-400',
-      iconBg: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
-    },
-    {
-      label: 'Sanitized Files',
-      value: sanitizedCount,
-      sublabel: 'Output de-identified',
-      icon: CheckCircle2,
-      accentColor: 'text-emerald-400',
-      iconBg: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
-    },
-    {
-      label: 'Quarantined Files',
-      value: quarantinedCount,
-      sublabel: 'Security threats isolated',
-      icon: AlertTriangle,
-      accentColor: quarantinedCount > 0 ? 'text-rose-400' : 'text-slate-400',
-      iconBg: quarantinedCount > 0 ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-slate-800/40 border-slate-700/40 text-slate-400',
-    },
-    {
-      label: 'PII Detected',
-      value: detectedCount,
-      sublabel: 'Direct & quasi IDs',
-      icon: ShieldAlert,
-      accentColor: 'text-amber-400',
-      iconBg: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
-    },
-    {
-      label: 'Linked Clusters',
-      value: clustersCount,
-      sublabel: 'Cross-hospital patients',
-      icon: Network,
-      accentColor: 'text-purple-400',
-      iconBg: 'bg-purple-500/10 border-purple-500/20 text-purple-400',
-    },
-    {
-      label: 'Runtime / RSS',
-      value: runtimeDisplay,
-      sublabel: `Peak RAM: ${rssDisplay}`,
-      icon: Clock,
-      accentColor: 'text-teal-400',
-      iconBg: 'bg-teal-500/10 border-teal-500/20 text-teal-400',
-    },
+  const runtimeDisplay = seconds !== undefined ? `${Number(seconds).toFixed(2)}s` : '0.00s';
+  const rssDisplay = peakRss !== undefined ? `${peakRss} MB` : '0 MB';
+
+  const stats = [
+    { label: 'Staged files', value: filesCount, meta: 'In queue', tone: 'text-zinc-100' },
+    { label: 'Sanitized', value: sanitizedCount, meta: 'Verified output', tone: sanitizedCount > 0 ? 'text-emerald-400' : 'text-zinc-100' },
+    { label: 'Quarantined', value: quarantinedCount, meta: 'Isolated', tone: quarantinedCount > 0 ? 'text-rose-400' : 'text-zinc-400' },
+    { label: 'Identifiers', value: detectedCount, meta: 'Direct and quasi', tone: 'text-zinc-100' },
+    { label: 'Linked clusters', value: clustersCount, meta: 'Patient IDs', tone: 'text-zinc-100' },
+    { label: 'Runtime', value: runtimeDisplay, meta: `Peak ${rssDisplay}`, tone: 'text-zinc-100' },
   ];
 
   return (
-    <div className="raksha-stats bg-[#0B1120] border-b border-[#1E293B] py-4 px-6">
-      <div className="max-w-7xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-        {CARDS.map((card) => {
-          const Icon = card.icon;
-          return (
-            <div
-              key={card.label}
-              className="raksha-stat-card bg-[#111C2E] border border-[#1E293B] hover:border-[#1E3A5F] rounded-xl p-3.5 transition-all shadow-sm flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                  {card.label}
-                </span>
-                <div className={`w-7 h-7 rounded-lg border flex items-center justify-center ${card.iconBg}`}>
-                  <Icon className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div>
-                <p className={`text-2xl font-bold tracking-tight font-sans ${card.accentColor}`}>
-                  {card.value}
-                </p>
-                <p className="text-[11px] text-slate-500 font-mono mt-0.5 truncate">
-                  {card.sublabel}
-                </p>
-              </div>
+    <section className="border-b border-white/[0.08] bg-[#111214]">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-white/[0.08]">
+        {stats.map((stat) => (
+          <div key={stat.label} className="px-6 py-4 flex flex-col justify-between gap-2">
+            <span className="text-xs text-zinc-500">{stat.label}</span>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className={`text-xl font-semibold tracking-tight tabular-nums ${stat.tone}`}>
+                {stat.value}
+              </span>
+              <span className="text-xs font-mono text-zinc-500 truncate">{stat.meta}</span>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
-    </div>
+    </section>
   );
 }

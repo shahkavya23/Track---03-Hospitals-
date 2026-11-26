@@ -1,36 +1,99 @@
-// Purpose: Tab 1 - Redesigned enterprise upload center, 3 scenario cards, and active file queue.
 import React, { useState, useRef } from 'react';
 import {
   UploadCloud,
-  FileSpreadsheet,
-  FileCode,
-  FileText,
-  AlertCircle,
-  Trash2,
-  Play,
-  Sparkles,
-  ShieldAlert,
-  HeartPulse,
-  Network,
+  Plus,
+  X,
   CheckCircle2,
-  FolderOpen,
+  AlertOctagon,
+  Copy,
+  Check,
   ArrowRight,
-  HardDrive
+  Play,
 } from 'lucide-react';
+
+const SCENARIOS = [
+  {
+    key: 'multilingual-linkage',
+    title: 'Multilingual linkage',
+    subtitle: 'Apollo CSV + AIIMS Hindi + FHIR R4',
+  },
+  {
+    key: 'clinical-preservation',
+    title: 'Clinical safety guard',
+    subtitle: 'ICU vitals, Ramipril, Insulin doses',
+  },
+  {
+    key: 'security-quarantine',
+    title: 'Quarantine defense',
+    subtitle: 'Path traversal + corrupt binary',
+  },
+];
+
+const TOKEN_PATTERN = /(\bPSN-[A-Z0-9]+\b|\bREC-[A-Z0-9]+\b|\[(?:PATIENT|RELATIVE|STAFF|PHONE|AADHAAR|PAN|ABHA|DL|EMAIL|IP|USERNAME|CASE_NO|ID_MARK|ADDRESS|IDENTITY_HINT|DATE|AGE|SCHOOL|OCCUPATION|REDACTED(?:-[A-Z_]+)?)\]|[1-8]\d{2}XXX(?:\s+region)?)/g;
+
+function highlightSanitizedText(text) {
+  if (!text) return null;
+  const parts = text.split(TOKEN_PATTERN);
+  return parts.map((part, idx) => {
+    if (!part) return null;
+    if (part.startsWith('PSN-') || part.startsWith('REC-')) {
+      return (
+        <span
+          key={idx}
+          className="px-1 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 font-medium"
+        >
+          {part}
+        </span>
+      );
+    }
+    if ((part.startsWith('[') && part.endsWith(']')) || part.includes('XXX')) {
+      return (
+        <span
+          key={idx}
+          className="px-1 rounded bg-white/[0.08] text-zinc-100 border border-white/[0.12] font-medium"
+        >
+          {part}
+        </span>
+      );
+    }
+    return <React.Fragment key={idx}>{part}</React.Fragment>;
+  });
+}
 
 export default function IngestTab({
   files,
+  metrics,
+  report,
+  running,
+  uploadProgress,
+  selectedFile,
+  diffData,
+  onSelectFile,
   onLoadPreset,
   onFileUpload,
-  uploadProgress,
   onDeleteFile,
-  onClearQueue,
   onRun,
-  running,
+  onOpenAudit,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [loadingPreset, setLoadingPreset] = useState(null);
+  const [viewMode, setViewMode] = useState('split'); // 'split' | 'sanitized' | 'original'
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef(null);
+
+  const counts = report?.counts || {};
+  const sanitizedCount = metrics?.files_sanitized ?? counts.files_sanitized ?? 0;
+  const quarantinedCount = metrics?.files_quarantined ?? counts.files_quarantined ?? 0;
+  const detectedCount = metrics?.identifiers_detected ?? counts.identifiers_detected ?? 0;
+  const seconds = metrics?.seconds ?? report?.timing?.seconds;
+  const hasRun = Boolean(metrics || report);
+
+  const isQuarantined = diffData?.status === 'quarantined';
+  const quarantineReason = React.useMemo(() => {
+    if (!isQuarantined) return null;
+    const entry = report?.files?.find((f) => f.status === 'quarantined');
+    return entry?.reason || 'output verification failed';
+  }, [isQuarantined, report]);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -59,333 +122,332 @@ export default function IngestTab({
     }
   };
 
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  const handleCopy = () => {
+    if (!diffData?.sanitized) return;
+    navigator.clipboard.writeText(diffData.sanitized);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  const getFormatBadge = (fmt) => {
-    switch (fmt) {
-      case 'csv':
-        return { label: 'CSV', bg: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', icon: FileSpreadsheet };
-      case 'tsv':
-        return { label: 'TSV', bg: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', icon: FileSpreadsheet };
-      case 'fhir_r4':
-        return { label: 'FHIR R4', bg: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30', icon: FileCode };
-      case 'json':
-        return { label: 'JSON', bg: 'bg-blue-500/15 text-blue-400 border-blue-500/30', icon: FileCode };
-      case 'text':
-        return { label: 'TEXT (Devanagari/UTF-8)', bg: 'bg-purple-500/15 text-purple-400 border-purple-500/30', icon: FileText };
-      default:
-        return { label: 'UNSUPPORTED', bg: 'bg-rose-500/15 text-rose-400 border-rose-500/30', icon: AlertCircle };
-    }
-  };
+  const fileInput = (
+    <input
+      type="file"
+      ref={fileInputRef}
+      multiple
+      accept=".csv,.tsv,.json,.txt,.fhir.json,text/plain,text/csv,text/tab-separated-values,application/json"
+      onChange={onFileUpload}
+      className="hidden"
+    />
+  );
 
-  return (
-    <div className="ingest-page space-y-8">
-      {/* SECTION 1: 3 SCENARIO DEMONSTRATION CARDS */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              Pre-Configured Hackathon Demonstration Scenarios
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Instant one-click evaluation suites configured specifically for the Dean and competition judges.
+  // Empty State: Clean, focused dropzone + 1-click sample runners
+  if (files.length === 0) {
+    return (
+      <div className="max-w-3xl mx-auto py-8 space-y-8">
+        {fileInput}
+
+        <div className="text-center space-y-2">
+          <h1 className="text-xl font-medium text-zinc-100">
+            De-identify hospital records locally
+          </h1>
+          <p className="text-sm text-zinc-400">
+            Upload English, Hindi, or Hinglish clinical files. Vitals and dosages stay intact; patient identity is replaced with keyed HMAC pseudonyms.
+          </p>
+        </div>
+
+        <div className="bg-[#17181C] border border-white/[0.08] rounded-xl p-2">
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => !uploadProgress && fileInputRef.current?.click()}
+            className={`min-h-[240px] rounded-lg border border-dashed p-8 flex flex-col items-center justify-center text-center transition-colors duration-150 cursor-pointer ${
+              isDragging
+                ? 'border-emerald-500 bg-emerald-500/[0.04]'
+                : 'border-white/[0.12] bg-[#111214] hover:border-white/25'
+            }`}
+          >
+            <UploadCloud className="w-6 h-6 text-zinc-400 mb-3" strokeWidth={1.5} />
+            <p className="text-sm font-medium text-zinc-100">
+              {uploadProgress ? 'Processing uploaded files' : 'Drop files here or click to browse'}
             </p>
+            <p className="text-xs font-mono text-zinc-500 mt-2">
+              CSV · TSV · JSON · FHIR R4 · TXT · Max 200 MB
+            </p>
+
+            {uploadProgress && (
+              <div className="w-full max-w-sm mt-6" role="status" aria-live="polite">
+                <div className="flex items-center justify-between text-xs font-mono mb-2">
+                  <span className="text-zinc-300 truncate pr-3">
+                    {uploadProgress.processing ? 'Running firewall' : uploadProgress.currentFile}
+                  </span>
+                  <span className="text-emerald-400 tabular-nums">
+                    {uploadProgress.processing ? 'Sanitizing' : `${uploadProgress.completed}/${uploadProgress.total}`}
+                  </span>
+                </div>
+                <div className="h-1 w-full rounded bg-white/[0.08] overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 transition-[width] duration-150"
+                    style={{
+                      width: `${
+                        ((uploadProgress.completed * 100 + uploadProgress.percent) /
+                          (uploadProgress.total * 100)) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-4">
-          {/* Scenario A */}
-          <div className="scenario-card bg-[#111C2E] border border-[#1E293B] hover:border-teal-500/40 rounded-xl p-5 flex flex-col justify-between transition-all duration-200 group hover:shadow-lg hover:shadow-teal-500/5">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-teal-500/15 text-teal-400 border border-teal-500/30 uppercase tracking-wider">
-                  Scenario 01
-                </span>
-                <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400">
-                  <Network className="w-4 h-4" />
-                </div>
-              </div>
-              <h3 className="text-sm font-bold text-white group-hover:text-teal-300 transition-colors">
-                Cross-Hospital Multilingual Linkage
-              </h3>
-              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                Links patient <span className="text-slate-200 font-medium">"Aarav Sharma"</span> across Apollo CSV, AIIMS Hindi ICU Consultation note, and FHIR R4 JSON into the exact same pseudonymous cluster ID.
-              </p>
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                <span className="text-[10px] px-2 py-0.5 rounded bg-[#0B1120] text-slate-300 border border-[#1E293B]">Apollo CSV</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-[#0B1120] text-slate-300 border border-[#1E293B]">AIIMS Hindi Note</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-[#0B1120] text-slate-300 border border-[#1E293B]">FHIR R4 JSON</span>
-              </div>
-            </div>
-            <button
-              onClick={() => triggerPreset('multilingual-linkage')}
-              disabled={loadingPreset !== null}
-              className="mt-5 w-full py-2.5 px-4 bg-teal-500/15 hover:bg-teal-500 text-teal-300 hover:text-slate-950 font-semibold rounded-lg text-xs border border-teal-500/30 hover:border-teal-400 transition-all flex items-center justify-center gap-2 group/btn shadow-sm"
-            >
-              <span>{loadingPreset === 'multilingual-linkage' ? 'Loading Scenario...' : 'Load Scenario A'}</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-0.5 transition-transform" />
-            </button>
+        {/* 1-click Sample Scenarios */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-xs text-zinc-500">
+            <span>Or run a sample scenario</span>
+            <span className="font-mono">Loads and sanitizes in one click</span>
           </div>
 
-          {/* Scenario B */}
-          <div className="scenario-card bg-[#111C2E] border border-[#1E293B] hover:border-cyan-500/40 rounded-xl p-5 flex flex-col justify-between transition-all duration-200 group hover:shadow-lg hover:shadow-cyan-500/5">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 uppercase tracking-wider">
-                  Scenario 02
-                </span>
-                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
-                  <HeartPulse className="w-4 h-4" />
-                </div>
-              </div>
-              <h3 className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors">
-                ICU Clinical Safety & Dosage Preservation
-              </h3>
-              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                Proves zero clinical harm: ICU vitals (<span className="text-slate-200 font-mono">BP 165/95</span>, <span className="text-slate-200 font-mono">SpO2 94%</span>), medications (<span className="text-slate-200">Ramipril</span>, <span className="text-slate-200">Insulin</span>), and exact doses (<span className="text-slate-200 font-mono">14 units</span>) stay 100% untouched.
-              </p>
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                <span className="text-[10px] px-2 py-0.5 rounded bg-[#0B1120] text-slate-300 border border-[#1E293B]">ICU TSV</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-[#0B1120] text-slate-300 border border-[#1E293B]">Discharge Note</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-[#0B1120] text-emerald-400 border border-emerald-500/30">100% Integrity</span>
-              </div>
-            </div>
-            <button
-              onClick={() => triggerPreset('clinical-preservation')}
-              disabled={loadingPreset !== null}
-              className="mt-5 w-full py-2.5 px-4 bg-cyan-500/15 hover:bg-cyan-500 text-cyan-300 hover:text-slate-950 font-semibold rounded-lg text-xs border border-cyan-500/30 hover:border-cyan-400 transition-all flex items-center justify-center gap-2 group/btn shadow-sm"
-            >
-              <span>{loadingPreset === 'clinical-preservation' ? 'Loading Scenario...' : 'Load Scenario B'}</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-0.5 transition-transform" />
-            </button>
-          </div>
-
-          {/* Scenario C */}
-          <div className="scenario-card bg-[#111C2E] border border-[#1E293B] hover:border-rose-500/40 rounded-xl p-5 flex flex-col justify-between transition-all duration-200 group hover:shadow-lg hover:shadow-rose-500/5">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30 uppercase tracking-wider">
-                  Scenario 03
-                </span>
-                <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-                  <ShieldAlert className="w-4 h-4" />
-                </div>
-              </div>
-              <h3 className="text-sm font-bold text-white group-hover:text-rose-300 transition-colors">
-                Hostile Attack & Quarantine Defense
-              </h3>
-              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                Stresses firewall defenses with malicious path traversal (<span className="text-rose-300 font-mono">../../etc/passwd</span>), truncated multibyte UTF-8, and raw binary firmware without crashing.
-              </p>
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                <span className="text-[10px] px-2 py-0.5 rounded bg-[#0B1120] text-slate-300 border border-[#1E293B]">Traversal Attack</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-[#0B1120] text-slate-300 border border-[#1E293B]">Corrupted UTF-8</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-[#0B1120] text-rose-400 border border-rose-500/30">Auto-Quarantine</span>
-              </div>
-            </div>
-            <button
-              onClick={() => triggerPreset('security-quarantine')}
-              disabled={loadingPreset !== null}
-              className="mt-5 w-full py-2.5 px-4 bg-rose-500/15 hover:bg-rose-500 text-rose-300 hover:text-slate-950 font-semibold rounded-lg text-xs border border-rose-500/30 hover:border-rose-400 transition-all flex items-center justify-center gap-2 group/btn shadow-sm"
-            >
-              <span>{loadingPreset === 'security-quarantine' ? 'Loading Scenario...' : 'Load Scenario C'}</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-0.5 transition-transform" />
-            </button>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {SCENARIOS.map((sc) => {
+              const isLoading = loadingPreset === sc.key;
+              return (
+                <button
+                  key={sc.key}
+                  type="button"
+                  onClick={() => triggerPreset(sc.key)}
+                  disabled={loadingPreset !== null || running}
+                  className="text-left p-4 rounded-xl bg-[#17181C] hover:bg-[#1E2025] border border-white/[0.08] hover:border-white/[0.16] transition-colors duration-150 cursor-pointer disabled:opacity-50 group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-zinc-100">{sc.title}</span>
+                    <ArrowRight className="w-4 h-4 text-zinc-500 group-hover:text-zinc-200 transition-colors duration-150 shrink-0" strokeWidth={1.5} />
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-1 truncate">
+                    {isLoading ? 'Running scenario' : sc.subtitle}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
+    );
+  }
 
-      {/* SECTION 2: PROFESSIONAL DRAG-AND-DROP FILE UPLOAD PANEL */}
-      <div className="upload-panel bg-[#111C2E] border border-[#1E293B] rounded-xl p-6 shadow-sm">
+  // Active Workspace: File Strip + Live Diff Inspector
+  return (
+    <div className="space-y-4">
+      {fileInput}
+
+      {/* Compact File Strip & Run Summary */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          {files.map((file) => {
+            const isSelected = selectedFile === file.name;
+            return (
+              <div
+                key={file.name}
+                className={`h-8 rounded-lg border inline-flex items-center transition-colors duration-150 ${
+                  isSelected
+                    ? 'bg-[#1E2025] border-white/[0.16] text-zinc-100'
+                    : 'bg-[#17181C] border-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelectFile(file.name)}
+                  className="px-3 h-full text-xs font-mono cursor-pointer truncate max-w-[200px]"
+                  title={file.name}
+                >
+                  {file.name}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeleteFile(file.name)}
+                  className="pr-2 pl-1 h-full text-zinc-500 hover:text-rose-400 cursor-pointer"
+                  title={`Remove ${file.name}`}
+                >
+                  <X className="w-3 h-3" strokeWidth={1.5} />
+                </button>
+              </div>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={Boolean(uploadProgress)}
+            className="h-8 px-3 rounded-lg border border-dashed border-white/[0.16] hover:border-white/30 text-xs text-zinc-400 hover:text-zinc-100 inline-flex items-center gap-1.5 cursor-pointer transition-colors duration-150"
+          >
+            <Plus className="w-4 h-4" strokeWidth={1.5} />
+            <span>Add file</span>
+          </button>
+        </div>
+
+        {/* Inline Summary Telemetry */}
+        {hasRun && (
+          <div className="flex items-center gap-4 text-xs font-mono tabular-nums text-zinc-400">
+            <span className="text-emerald-400">{sanitizedCount} sanitized</span>
+            {quarantinedCount > 0 && (
+              <button
+                type="button"
+                onClick={onOpenAudit}
+                className="text-rose-400 hover:underline cursor-pointer"
+              >
+                {quarantinedCount} quarantined
+              </button>
+            )}
+            <span>{detectedCount} PII spans</span>
+            {seconds !== undefined && <span>{Number(seconds).toFixed(2)}s</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Upload / Run Progress */}
+      {(uploadProgress || running) && (
+        <div className="p-3 rounded-lg bg-[#17181C] border border-white/[0.08] flex items-center justify-between text-xs font-mono">
+          <span className="text-zinc-300">
+            {uploadProgress ? `Uploading ${uploadProgress.currentFile}` : 'Executing seven-stage privacy firewall'}
+          </span>
+          <span className="text-emerald-400">Processing</span>
+        </div>
+      )}
+
+      {/* Diff Inspector Controls */}
+      <div className="bg-[#17181C] border border-white/[0.08] rounded-xl overflow-hidden">
+        <div className="px-4 h-12 border-b border-white/[0.08] flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {/* View Mode Switcher */}
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-[#111214] border border-white/[0.08]">
+              {[
+                { id: 'split', label: 'Split' },
+                { id: 'sanitized', label: 'Protected' },
+                { id: 'original', label: 'Original' },
+              ].map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => setViewMode(mode.id)}
+                  className={`px-2.5 h-6 rounded text-xs font-medium transition-colors duration-150 cursor-pointer ${
+                    viewMode === mode.id
+                      ? 'bg-[#262830] text-zinc-100'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+
+            {diffData && (
+              <span
+                className={`text-xs font-mono inline-flex items-center gap-1.5 ${
+                  isQuarantined ? 'text-rose-400' : 'text-emerald-400'
+                }`}
+              >
+                {isQuarantined ? (
+                  <AlertOctagon className="w-4 h-4" strokeWidth={1.5} />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4" strokeWidth={1.5} />
+                )}
+                <span>{isQuarantined ? `Quarantined · ${quarantineReason}` : 'Verified clean'}</span>
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!hasRun && (
+              <button
+                type="button"
+                onClick={onRun}
+                disabled={running}
+                className="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-[#111214] text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors duration-150"
+              >
+                <Play className="w-4 h-4" strokeWidth={1.5} />
+                <span>Sanitize now</span>
+              </button>
+            )}
+
+            {diffData?.sanitized && (
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="h-8 px-3 rounded-lg bg-[#1E2025] hover:bg-[#262830] border border-white/[0.08] text-xs font-medium text-zinc-200 inline-flex items-center gap-2 cursor-pointer transition-colors duration-150"
+              >
+                {copied ? (
+                  <Check className="w-4 h-4 text-emerald-400" strokeWidth={1.5} />
+                ) : (
+                  <Copy className="w-4 h-4 text-zinc-400" strokeWidth={1.5} />
+                )}
+                <span>{copied ? 'Copied' : 'Copy output'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Diff Body */}
         <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={`upload-dropzone border-2 border-dashed rounded-xl p-10 text-center transition-all duration-200 flex flex-col items-center justify-center ${
-            isDragging
-              ? 'border-teal-400 bg-teal-500/10 scale-[1.005]'
-              : 'border-[#1E293B] hover:border-teal-500/40 bg-[#0B1120]/70'
+          className={`grid divide-y md:divide-y-0 md:divide-x divide-white/[0.08] ${
+            viewMode === 'split' ? 'md:grid-cols-2' : 'grid-cols-1'
           }`}
         >
-          {/* Circular Accent Background Icon */}
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-500/20 to-cyan-500/10 border border-teal-500/30 flex items-center justify-center mb-4 shadow-inner">
-            <UploadCloud className="w-8 h-8 text-teal-400" />
-          </div>
-
-          <h3 className="text-base font-bold text-white tracking-tight">
-            Upload Healthcare Files
-          </h3>
-          <p className="text-xs text-slate-400 mt-1.5 max-w-md mx-auto leading-relaxed">
-            Drag and drop your clinical datasets here or browse files from your computer. Supports multi-file concurrent ingestion.
-          </p>
-
-          {/* Browse Files Button */}
-          <div className="mt-5 flex items-center gap-3">
-            <input
-              type="file"
-              ref={fileInputRef}
-              multiple
-              accept=".csv,.tsv,.json,.txt,.fhir.json,text/plain,text/csv,text/tab-separated-values,application/json"
-              onChange={onFileUpload}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={Boolean(uploadProgress)}
-              className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-slate-950 font-bold rounded-lg text-xs shadow-lg shadow-teal-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
-            >
-              <FolderOpen className="w-4 h-4" />
-              {uploadProgress ? 'Uploading…' : 'Browse Files'}
-            </button>
-          </div>
-
-          {uploadProgress && (
-            <div className="upload-progress" role="status" aria-live="polite">
-              <div className="upload-progress-heading">
-                <span>{uploadProgress.processing ? 'Creating protected output' : uploadProgress.completed === uploadProgress.total ? 'Finishing upload' : `Uploading ${uploadProgress.currentFile}`}</span>
-                <span>{uploadProgress.processing ? 'Redacting sensitive data' : `${uploadProgress.completed} / ${uploadProgress.total} files`}</span>
+          {(viewMode === 'split' || viewMode === 'original') && (
+            <div className="flex flex-col min-w-0">
+              <div className="px-4 py-2 bg-[#131417] border-b border-white/[0.06] flex items-center justify-between text-xs text-zinc-500">
+                <span>Original raw input</span>
+                <span className="font-mono">Source</span>
               </div>
-              <div
-                className="upload-progress-track"
-                role="progressbar"
-                aria-label="File upload progress"
-                aria-valuemin={0}
-                aria-valuemax={uploadProgress.total * 100}
-                aria-valuenow={uploadProgress.completed * 100 + uploadProgress.percent}
-              >
-                <div className="upload-progress-fill" style={{ width: `${((uploadProgress.completed * 100 + uploadProgress.percent) / (uploadProgress.total * 100)) * 100}%` }} />
+              <div className="p-4 bg-[#0D0E10] overflow-auto max-h-[540px]">
+                <pre className="text-xs font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed select-text">
+                  {diffData?.original || '// Select a file to inspect'}
+                </pre>
               </div>
             </div>
           )}
 
-          {/* Supported Format Badges */}
-          <div className="mt-6 pt-5 border-t border-[#1E293B]/80 w-full max-w-xl flex flex-wrap items-center justify-center gap-2">
-            <span className="text-[11px] font-semibold text-slate-400 mr-1 font-mono uppercase">Supported Formats:</span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#111C2E] text-emerald-400 border border-emerald-500/30 font-semibold">CSV</span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#111C2E] text-emerald-400 border border-emerald-500/30 font-semibold">TSV</span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#111C2E] text-blue-400 border border-blue-500/30 font-semibold">JSON</span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#111C2E] text-cyan-400 border border-cyan-500/30 font-semibold">FHIR R4 JSON</span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#111C2E] text-purple-400 border border-purple-500/30 font-semibold">TXT (UTF-8 / Latin-1 / Devanagari)</span>
-          </div>
-
-          {/* Limit and Encoding Notice */}
-          <div className="mt-2 text-[11px] text-slate-500 font-mono flex items-center gap-3">
-            <span>Max File Size: 200 MB</span>
-            <span>•</span>
-            <span>Zero Cloud Uploads • Strictly Local & Offline</span>
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 3: STAGED INGESTION QUEUE */}
-      <div className="queue-panel bg-[#111C2E] border border-[#1E293B] rounded-xl p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2.5">
-            <HardDrive className="w-4 h-4 text-teal-400" />
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-              Active Ingestion Queue
-            </h3>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-teal-500/15 text-teal-400 border border-teal-500/30">
-              {files.length} {files.length === 1 ? 'file' : 'files'}
-            </span>
-          </div>
-
-          {/* Action Row */}
-          <div className="flex items-center gap-2.5">
-            {files.length > 0 && (
-              <button
-                onClick={onClearQueue}
-                className="px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-rose-400 bg-[#0B1120] hover:bg-rose-500/10 border border-[#1E293B] hover:border-rose-500/30 rounded-lg transition-all flex items-center gap-1.5"
-                title="Remove all files from the queue"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Clear Queue
-              </button>
-            )}
-
-            <button
-              onClick={onRun}
-              disabled={running || files.length === 0}
-              className={`px-5 py-2 rounded-lg font-bold text-xs transition-all flex items-center gap-2 shadow-lg ${
-                running || files.length === 0
-                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-                  : 'bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 shadow-teal-500/20'
-              }`}
-            >
-              <Play className={`w-3.5 h-3.5 ${running ? 'animate-spin' : 'fill-slate-950'}`} />
-              {running ? 'Processing Firewall...' : 'Execute Firewall Pipeline'}
-            </button>
-          </div>
-        </div>
-
-        {/* Queue Rows */}
-        {files.length === 0 ? (
-          <div className="py-12 px-4 text-center border border-dashed border-[#1E293B] rounded-xl bg-[#0B1120]/40">
-            <div className="w-12 h-12 rounded-full bg-slate-800/60 flex items-center justify-center mx-auto mb-3 text-slate-500">
-              <FileText className="w-6 h-6" />
-            </div>
-            <p className="text-xs font-semibold text-slate-300">No Healthcare Files Staged in Queue</p>
-            <p className="text-[11px] text-slate-500 mt-1 max-w-sm mx-auto">
-              Select one of the three evaluation scenarios above, or drag and drop custom hospital files into the upload zone.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {files.map((file) => {
-              const badge = getFormatBadge(file.format);
-              const Icon = badge.icon;
-              return (
-                <div
-                  key={file.name}
-                  className="bg-[#0B1120] border border-[#1E293B] hover:border-[#1E3A5F] rounded-lg p-3 flex items-center justify-between gap-4 transition-all"
-                >
-                  {/* File Info */}
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="w-8 h-8 rounded-lg bg-[#111C2E] border border-[#1E293B] flex items-center justify-center shrink-0">
-                      <Icon className="w-4 h-4 text-slate-300" />
-                    </div>
-                    <div className="truncate">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white truncate max-w-xs md:max-w-md font-mono" title={file.name}>
-                          {file.name}
-                        </span>
-                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border uppercase shrink-0 ${badge.bg}`}>
-                          {badge.label}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                        {formatFileSize(file.size)} • Staged for Ingestion
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Actions & Status */}
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded hidden sm:inline-flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      Ready
-                    </span>
-
+          {(viewMode === 'split' || viewMode === 'sanitized') && (
+            <div className="flex flex-col min-w-0">
+              <div className="px-4 py-2 bg-[#131417] border-b border-white/[0.06] flex items-center justify-between text-xs text-zinc-500">
+                <span>Protected output</span>
+                <span className={`font-mono ${isQuarantined ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  {isQuarantined ? 'Quarantined' : 'De-identified'}
+                </span>
+              </div>
+              <div className="p-4 bg-[#0D0E10] overflow-auto max-h-[540px] flex-1">
+                {diffData?.sanitized ? (
+                  <pre className="text-xs font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed select-text">
+                    {highlightSanitizedText(diffData.sanitized)}
+                  </pre>
+                ) : isQuarantined ? (
+                  <div className="h-full min-h-[260px] flex flex-col items-center justify-center text-center p-6">
+                    <AlertOctagon className="w-5 h-5 text-rose-400 mb-3" strokeWidth={1.5} />
+                    <p className="text-sm font-medium text-zinc-100">
+                      File blocked by publication gate
+                    </p>
+                    <p className="text-xs text-zinc-400 mt-2 max-w-md leading-relaxed">
+                      Reason: <span className="text-zinc-200 font-mono">{quarantineReason}</span>.
+                      RAKSHA excluded this file from <code className="text-zinc-300">sanitized/</code> because it failed security checks or residual identifier verification.
+                    </p>
                     <button
-                      onClick={() => onDeleteFile(file.name)}
-                      className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-md transition-colors"
-                      title={`Remove ${file.name} from queue`}
+                      type="button"
+                      onClick={onOpenAudit}
+                      className="mt-4 h-8 px-3 rounded-lg bg-[#1E2025] hover:bg-[#262830] border border-white/[0.08] text-xs font-medium text-zinc-200 inline-flex items-center gap-2 cursor-pointer transition-colors duration-150"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <span>View quarantine log</span>
+                      <ArrowRight className="w-4 h-4 text-zinc-400" strokeWidth={1.5} />
                     </button>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                ) : (
+                  <pre className="text-xs font-mono text-zinc-500 whitespace-pre-wrap leading-relaxed">
+                    {'// Click "Run firewall" to generate protected output'}
+                  </pre>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

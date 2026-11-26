@@ -1,67 +1,111 @@
-// Purpose: Executive-grade top navigation header with product branding, security status, and workspace controls.
 import React from 'react';
-import { Shield, Cpu, Key, RotateCcw, Lock, Radio } from 'lucide-react';
+import { Shield, RotateCcw, Download, Play } from 'lucide-react';
 
-export default function Header({ status, onReset }) {
-  const secretDisplay = status?.secret_hint || 'ACTIVE';
+const TABS = [
+  { id: 'sanitize', label: 'Sanitize' },
+  { id: 'linkage', label: 'Linkage & safety' },
+  { id: 'audit', label: 'Audit & quarantine' },
+];
+
+export default function Header({
+  activeTab,
+  onSelectTab,
+  status,
+  hasOutput,
+  filesCount,
+  quarantinedCount,
+  clustersCount,
+  running,
+  onRun,
+  onReset,
+}) {
+  const secretDisplay = status?.secret_hint || 'Active';
 
   return (
-    <header className="raksha-header border-b border-[#1E293B] bg-[#0B1120]/95 backdrop-blur-md px-6 py-3.5 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-        {/* Left: Branding & Subtitle */}
-        <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-teal-500/20 border border-teal-400/30">
-            <Shield className="w-5 h-5 text-white stroke-[2.2]" />
+    <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#111214]/95 backdrop-blur-sm">
+      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+        {/* Brand */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-[#17181C] border border-white/[0.1] flex items-center justify-center">
+            <Shield className="w-4 h-4 text-emerald-400" strokeWidth={1.5} />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-bold tracking-tight text-white font-sans">
-                RAKSHA
-              </span>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-400 border border-teal-500/30 font-mono">
-                v1.0
-              </span>
-            </div>
-            <p className="text-[12px] text-slate-400 font-medium">
-              Multilingual Healthcare Privacy Firewall • DevForge Track 3 ("Secret Wards")
-            </p>
+          <div className="flex items-baseline gap-2">
+            <span className="font-medium text-sm text-zinc-100">RAKSHA</span>
+            <span className="hidden sm:inline text-xs font-mono text-zinc-500">
+              Offline · {secretDisplay}
+            </span>
           </div>
         </div>
 
-        {/* Center & Right: Security Indicators & Controls */}
-        <div className="flex items-center flex-wrap gap-2.5">
-          {/* Air-Gapped Indicator */}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#111C2E] border border-[#1E293B] rounded-lg text-xs font-medium text-slate-300">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="text-[11px] uppercase tracking-wider text-emerald-400 font-semibold font-mono">
-              Air-Gapped / Offline
-            </span>
-          </div>
+        {/* 3 Clean Segmented Tabs */}
+        <nav className="flex items-center gap-1 p-1 rounded-lg bg-[#17181C] border border-white/[0.08]">
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            const badge =
+              tab.id === 'linkage' && clustersCount > 0
+                ? clustersCount
+                : tab.id === 'audit' && quarantinedCount > 0
+                ? quarantinedCount
+                : null;
 
-          {/* CPU-Only Engine */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#111C2E] border border-[#1E293B] rounded-lg text-xs font-medium text-slate-300">
-            <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-[11px] font-mono text-cyan-300">CPU-Only • Zero LLM</span>
-          </div>
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => onSelectTab(tab.id)}
+                className={`h-8 px-3 rounded-md text-xs font-medium transition-colors duration-150 inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
+                  isActive
+                    ? 'bg-[#262830] text-zinc-100'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <span>{tab.label}</span>
+                {badge !== null && (
+                  <span
+                    className={`text-xs font-mono tabular-nums ${
+                      tab.id === 'audit' && quarantinedCount > 0
+                        ? 'text-rose-400'
+                        : 'text-emerald-400'
+                    }`}
+                  >
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
 
-          {/* Secret Key Status */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#111C2E] border border-[#1E293B] rounded-lg text-xs font-medium text-slate-300">
-            <Lock className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-[11px] font-mono text-slate-300">HMAC-SHA256:</span>
-            <span className="text-[11px] font-mono text-amber-400 font-semibold">{secretDisplay}</span>
-          </div>
+        {/* Primary Actions */}
+        <div className="flex items-center gap-2 shrink-0">
+          {hasOutput && (
+            <a
+              href="/api/download-zip"
+              download="raksha_sanitized_package.zip"
+              className="hidden md:inline-flex items-center gap-2 h-8 px-3 rounded-lg border border-white/[0.1] bg-[#17181C] hover:bg-[#1E2025] text-xs font-medium text-zinc-200 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+            >
+              <Download className="w-4 h-4 text-zinc-400" strokeWidth={1.5} />
+              <span>Export ZIP</span>
+            </a>
+          )}
 
-          {/* Reset Workspace */}
           <button
-            onClick={onReset}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#111C2E] hover:bg-[#16243C] border border-[#1E293B] hover:border-slate-600 rounded-lg text-xs font-medium text-slate-300 hover:text-white transition-all shadow-sm"
-            title="Clear all staged files and reset output"
+            type="button"
+            onClick={() => onRun()}
+            disabled={running || filesCount === 0}
+            className="inline-flex items-center gap-2 h-8 px-3 rounded-lg text-xs font-medium transition-colors duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-[#F4F4F5] text-[#111214] hover:bg-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-            <span>Reset</span>
+            <Play className="w-4 h-4" strokeWidth={1.5} />
+            <span>{running ? 'Running' : 'Run firewall'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onReset}
+            title="Clear workspace"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-white/[0.08] bg-[#17181C] hover:bg-[#1E2025] text-zinc-400 hover:text-zinc-100 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+          >
+            <RotateCcw className="w-4 h-4" strokeWidth={1.5} />
           </button>
         </div>
       </div>
