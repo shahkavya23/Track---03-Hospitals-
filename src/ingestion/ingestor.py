@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Sequence
 
 import yaml
@@ -118,6 +118,17 @@ class UniversalIngestor:
     ) -> SourceFile:
         detected_format = FileFormat.UNSUPPORTED
         detected_encoding = "unknown"
+
+        suffix = PurePosixPath(relative_posix).suffix.lower()
+        if suffix not in self.config.supported_extensions:
+            return self._quarantined_source(
+                source_ref=source_ref,
+                sha256=sha256,
+                relative_posix=relative_posix,
+                file_format=detected_format,
+                encoding=detected_encoding,
+                reason="unsupported format",
+            )
 
         try:
             raw_bytes = abs_path.read_bytes()

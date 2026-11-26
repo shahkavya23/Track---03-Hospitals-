@@ -9,7 +9,7 @@ from typing import Any, Callable
 from src.contracts import FieldNode, PatientRecord
 
 from ..errors import IngestionQuarantineError
-from .json_parser import _flatten_json_fields
+from .json_parser import _escape_pointer_token, _flatten_json_fields
 
 
 def _index_bundle_references(bundle: dict[str, Any]) -> dict[str, int]:
@@ -51,7 +51,12 @@ def _extract_attachment_text_nodes(payload: Any) -> list[FieldNode]:
             if (
                 isinstance(data_b64, str)
                 and data_b64
-                and (not isinstance(content_type, str) or content_type.startswith("text/"))
+                and (
+                    not isinstance(content_type, str)
+                    or content_type.lower().startswith("text/")
+                    or "json" in content_type.lower()
+                    or "xml" in content_type.lower()
+                )
             ):
                 try:
                     decoded_bytes = base64.b64decode(data_b64, validate=True)
@@ -70,7 +75,7 @@ def _extract_attachment_text_nodes(payload: Any) -> list[FieldNode]:
 
             for k, v in reversed(list(current.items())):
                 if isinstance(v, (dict, list)):
-                    stack.append((v, f"{pointer}/{k}"))
+                    stack.append((v, f"{pointer}/{_escape_pointer_token(str(k))}"))
         elif isinstance(current, list):
             for idx in range(len(current) - 1, -1, -1):
                 if isinstance(current[idx], (dict, list)):
