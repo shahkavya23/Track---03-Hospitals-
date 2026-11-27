@@ -1,0 +1,17 @@
+﻿case_id,language,clinical_text,expected_entity_types_hint,preservation_note
+TC001,en,Patient: Aarav Mehta; Phone: 0000000001; Age: 42,PERSON_NAME|PHONE,Preserve age and clinical details
+TC002,en,"Mrs. Kavita Sharma, 38 years, reports fever and cough. Contact: test.kavita@example.invalid",PERSON_NAME|EMAIL,"Preserve age, fever, cough"
+TC003,en,Patient's father: Rohan Verma. Patient has hypertension and takes amlodipine 5 mg daily.,RELATIVE_NAME,Preserve diagnosis and medication
+TC004,en,Attending physician: Dr. Nisha Rao. Patient reports chest pain since yesterday.,NONE_IN_THIS_SENTENCE,Preserve doctor name if role-based exclusion is required; preserve symptom
+TC005,en,UHID: TEST-UHID-00017; MRN: TEST-MRN-0042; Patient: Imran Khan,PERSON_NAME|UHID|MRN,Preserve clinical fields
+TC006,en,Aadhaar test placeholder: 0000 0000 0000; PAN test placeholder: ABCDE0000F,AADHAAR_LIKE|PAN_LIKE,Identifiers are deliberately invalid test placeholders
+TC007,en,Patient: Meera Iyer. Diagnosis: Type 2 diabetes. HbA1c: 7.2%.,PERSON_NAME,Preserve diagnosis and lab value
+TC008,en,Emergency contact (sister): Pooja Nair; phone 0000000002. Patient has acute gastroenteritis.,RELATIVE_NAME|PHONE,Preserve diagnosis
+TC009,en,Name: R. Kumar; referred by Dr. S. Patel; follow-up in 2 weeks.,PERSON_NAME,Ambiguous initials; inspect false positives and misses
+TC010,en,"No patient identifiers here. BP 120/80 mmHg, pulse 76 bpm, temperature 37.1 C.",NONE,Do not redact vitals or units
+TC011,hi,मरीज़ का नाम: आरव मेहता। उम्र ४२ वर्ष। मोबाइल: 0000000003।,PERSON_NAME|PHONE,उम्र को सुरक्षित रखें
+TC012,hi,श्रीमती कविता शर्मा को बुखार और खाँसी है। ईमेल: kavita.test@example.invalid,PERSON_NAME|EMAIL,बुखार और खाँसी को सुरक्षित रखें
+TC013,hi,मरीज के पिता का नाम रोहन वर्मा है। मरीज को उच्च रक्तचाप है।,RELATIVE_NAME,बीमारी का नाम सुरक्षित रखें
+TC014,hi,डॉ. निशा राव ने मरीज की जांच की। मरीज को सीने में दर्द है।,NONE_IN_THIS_SENTENCE,डॉक्टर का नाम और लक्षण सुरक्षित रखने की अपेक्षा
+TC015,hi,यूएचआईडी: TEST-UHID-00018; मरीज: इमरान खान; जांच: CBC,PERSON_NAME|UHID,CBC सुरक्षित रखें
+TC016,hi,मरीज: मीरा अय्यर। निदान: टाइप 2 मधुमेह। HbA1c: 7.1%.,PERSON_NAME,निदान और लैब वैल्यू सुरक्षित रखें

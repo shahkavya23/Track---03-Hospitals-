@@ -93,7 +93,11 @@ PINCODE_PATTERN = re.compile(r"\b[1-9]\d{2}\s?\d{3}\b")
 DATE_PATTERN = re.compile(r"\b(?:\d{4}[\-/]\d{2}[\-/]\d{2}|\d{2}[\-/]\d{2}[\-/]\d{4})\b")
 AGE_PATTERN = re.compile(r"\b(?:Age\s*[:=]?\s*(\d{1,3})|(\d{1,3})\s*(?:years?|yrs?|yr|y/o|साल|वर्ष))\b", re.IGNORECASE)
 NAME_CUES_EN = re.compile(r"\b(?:Patient|Pt|Name|Mr\.|Mrs\.|Ms\.|Dr\.|Shri|Smt)\s*[:=]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b")
-NAME_CUES_HI = re.compile(r"(?:मरीज|रोगी|नाम|श्री|श्रीमती|डॉ\.)\s*[:=]?\s*([\u0900-\u097F]+(?:\s+[\u0900-\u097F]+){1,3})")
+NAME_CUES_HI = re.compile(
+    r"(?:मरीज|रोगी|नाम|श्री|श्रीमती|डॉ\.)\s*[:=]?\s*"
+    r"((?!सुरक्षित|रखें|रखने|की|को|का|के|में|से|ने|है|हैं)[\u0900-\u097F]+"
+    r"(?:\s+(?!सुरक्षित|रखें|रखने|की|को|का|के|में|से|ने|है|हैं)[\u0900-\u097F]+){1,2})"
+)
 
 
 STRUCTURED_TEXT_PII_PATTERNS = (
@@ -310,13 +314,15 @@ class UIPIIDetector(PIIDetector):
                 attrs.setdefault("ages", []).append(text.strip())
             else:
                 for m in AGE_PATTERN.finditer(text):
-                    age_val = m.group(1) or m.group(2)
+                    group_idx = 1 if m.group(1) else 2
+                    age_val = m.group(group_idx)
+                    a_start, a_end = m.span(group_idx)
                     spans.append(
                         DetectionSpan(
                             record_ref=record.record_ref,
                             field_path=node.field_path,
-                            start=m.start(),
-                            end=m.end(),
+                            start=a_start,
+                            end=a_end,
                             category="AGE",
                             role=SpanRole.QUASI_IDENTIFIER,
                             confidence=0.94,
@@ -325,6 +331,43 @@ class UIPIIDetector(PIIDetector):
                     )
                     if age_val:
                         attrs.setdefault("ages", []).append(age_val)
+
+        # Propagate detected patient names across all fields in the record so
+        # repeated mentions in notes or attachment filenames are also redacted.
+        known_names = {
+            n.strip()
+            for n in attrs.get("PATIENT_NAME", [])
+            if len(n.strip()) >= 4 and n.strip().casefold() not in {"self", "unknown"}
+        }
+        if known_names:
+            for node in record.fields:
+                text = node.raw_value
+                if not text:
+                    continue
+                existing = [
+                    (s.start, s.end)
+                    for s in spans
+                    if s.field_path == node.field_path
+                ]
+                for name in sorted(known_names, key=len, reverse=True):
+                    pat = re.compile(rf"(?<![A-Za-z0-9]){re.escape(name)}(?![A-Za-z0-9])", re.IGNORECASE)
+                    for m in pat.finditer(text):
+                        s_idx, e_idx = m.span()
+                        if any(not (e_idx <= es or s_idx >= ee) for es, ee in existing):
+                            continue
+                        spans.append(
+                            DetectionSpan(
+                                record_ref=record.record_ref,
+                                field_path=node.field_path,
+                                start=s_idx,
+                                end=e_idx,
+                                category="PATIENT_NAME",
+                                role=SpanRole.DIRECT_PII,
+                                confidence=0.90,
+                                detector_source="ui_detector_name_propagation",
+                            )
+                        )
+                        existing.append((s_idx, e_idx))
 
         return spans
 
@@ -621,8 +664,11 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
                 return
 
             orig_text = ""
+            max_preview_chars = 262144
             try:
                 orig_text = original_path.read_text(encoding="utf-8", errors="replace")
+                if len(orig_text) > max_preview_chars:
+                    orig_text = orig_text[:max_preview_chars] + f"\n\n... [Preview truncated: file is {original_path.stat().st_size:,} bytes]"
             except Exception:
                 orig_text = f"[Binary data: {original_path.stat().st_size} bytes]"
 
@@ -631,6 +677,8 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
             if sanitized_path.exists():
                 try:
                     san_text = sanitized_path.read_text(encoding="utf-8", errors="replace")
+                    if len(san_text) > max_preview_chars:
+                        san_text = san_text[:max_preview_chars] + f"\n\n... [Preview truncated: file is {sanitized_path.stat().st_size:,} bytes]"
                 except Exception:
                     san_text = f"[Binary data: {sanitized_path.stat().st_size} bytes]"
             else:
@@ -799,7 +847,11 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
             )
 
             start_t = time.perf_counter()
-            metrics = pipeline.run(input_dir=INPUT_DIR, output_dir=OUTPUT_DIR)
+            try:
+                metrics = pipeline.run(input_dir=INPUT_DIR, output_dir=OUTPUT_DIR)
+            except Exception as exc:
+                self._send_json(500, {"error": f"Pipeline failed: {exc}"})
+                return
             duration = time.perf_counter() - start_t
 
             # Read report.json and records.jsonl
