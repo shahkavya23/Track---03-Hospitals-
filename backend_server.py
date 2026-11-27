@@ -36,8 +36,8 @@ from src.pipeline import RakshaPipeline
 from src.privacy.engine import AdaptivePrivacyEngine
 from src.serialization import SafeOutputSerializer
 
-HOST = "127.0.0.1"
-PORT = 8000
+HOST = "0.0.0.0"
+PORT = int(os.environ.get("PORT", "8000"))
 
 # Working directory for the UI session
 UI_WORKSPACE = Path(".raksha_ui_workspace")
@@ -523,7 +523,7 @@ def ensure_workspace() -> None:
 class RakshaAPIHandler(BaseHTTPRequestHandler):
     def _send_cors_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def _send_json(self, status: int, data: Any) -> None:
@@ -537,6 +537,14 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
+        self._send_cors_headers()
+        self.end_headers()
+
+    def do_HEAD(self) -> None:
+        """Respond to Render's availability probe without a response body."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", "0")
         self._send_cors_headers()
         self.end_headers()
 

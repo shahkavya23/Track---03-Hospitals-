@@ -8,6 +8,8 @@ __pycache__/
 .eggs/
 dist/
 build/
+!frontend/dist/
+!frontend/dist/**
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
