@@ -36,8 +36,8 @@ from src.pipeline import RakshaPipeline
 from src.privacy.engine import AdaptivePrivacyEngine
 from src.serialization import SafeOutputSerializer
 
-HOST = "127.0.0.1"
-PORT = 8000
+HOST = "0.0.0.0"
+PORT = int(os.environ.get("PORT", "8000"))
 
 # Working directory for the UI session
 UI_WORKSPACE = Path(".raksha_ui_workspace")
