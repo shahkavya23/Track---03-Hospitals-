@@ -32,12 +32,30 @@ from src.contracts import (
 )
 from src.ingestion import UniversalIngestor
 from src.linkage.engine import ConservativeLinkageEngine
+from src.engine import ENGINE_VERSION, compute_policy_hash, repo_head_version
 from src.pipeline import RakshaPipeline
 from src.privacy.engine import AdaptivePrivacyEngine
 from src.serialization import SafeOutputSerializer
+from src.security.independent_scan import scan
+from src.ingestion.encoding import decode_bytes_to_utf8
+from src.ingestion.format_detect import detect_format
 
-HOST = "127.0.0.1"
-PORT = 8000
+
+def output_verification():
+    counts = {}
+    root = OUTPUT_DIR / 'sanitized'
+    for path in sorted(root.rglob('*')) if root.exists() else []:
+        if path.is_file():
+            for category, count in scan(path.read_text(encoding='utf-8')).items():
+                counts[category] = counts.get(category, 0) + count
+    hits = sum(counts.values())
+    # Full invariant certification is not implemented. Never equate a clean
+    # regex scan with proof of all privacy and clinical invariants.
+    return {'hits': hits, 'categories': counts, 'invariants_complete': False,
+            'verified': False, 'export_allowed': False}
+
+HOST = "0.0.0.0"
+PORT = int(os.environ.get("PORT", "8000"))
 
 # Working directory for the UI session
 UI_WORKSPACE = Path(".raksha_ui_workspace")
@@ -48,378 +66,6 @@ OUTPUT_DIR = UI_WORKSPACE / "output"
 if "RAKSHA_SECRET" not in os.environ or not os.environ["RAKSHA_SECRET"].strip():
     os.environ["RAKSHA_SECRET"] = "RAKSHA-HACKATHON-DEAN-KEY-2026-STABLE"
 
-# --- High-Precision Multilingual Detector & Clinical Guard for UI Demo ---
-
-CLINICAL_PATTERNS = [
-    re.compile(r"\b(?:BP|B\.P\.|Blood Pressure)\s*[:=]?\s*\d{2,3}/\d{2,3}\s*(?:mmHg)?\b", re.IGNORECASE),
-    re.compile(r"\b(?:Pulse|HR|Heart Rate)\s*[:=]?\s*\d{2,3}\s*(?:bpm|/min)?\b", re.IGNORECASE),
-    re.compile(r"\b(?:SpO2|SPO2|Oxygen Saturation)\s*[:=]?\s*\d{2,3}\s*%\b", re.IGNORECASE),
-    re.compile(r"\b(?:Temp|Temperature)\s*[:=]?\s*\d{2,3}(?:\.\d)?\s*(?:°?F|°?C)?\b", re.IGNORECASE),
-    re.compile(r"\b(?:RR|Respiratory Rate)\s*[:=]?\s*\d{1,2}\s*(?:/min|breaths/min)?\b", re.IGNORECASE),
-    re.compile(r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|ug|g|gm|ml|mL|IU|units?|mEq|mEq/L|mmol/L)\b", re.IGNORECASE),
-    re.compile(r"\b(?:OD|BD|TDS|QID|Q4H|Q6H|HS|PRN|SOS|STAT|PO|IV|IM|SC|SL)\b"),
-    re.compile(r"\b[01]-[01]-[01](?:-[01])?\b"),
-    re.compile(r"\b(?:Tab|Tablet|Cap|Capsule|Syp|Syrup|Inj|Injection|Ointment)\b", re.IGNORECASE),
-    re.compile(
-        r"\b(?:Paracetamol|Metformin|Ramipril|Amlodipine|Atorvastatin|Aspirin|Pantoprazole|"
-        r"Omeprazole|Amoxicillin|Azithromycin|Ceftriaxone|Ciprofloxacin|Dolo|PCM|"
-        r"Insulin|Glargine|Regular|Lispro|Furosemide|Hydrochlorothiazide|Losartan|"
-        r"Telmisartan|Levothyroxine|Salbutamol|Budesonide|Cetirizine|Montelukast)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\b(?:Type 2 Diabetes Mellitus|Type 1 Diabetes|Diabetes|T2DM|T1DM|Hypertension|HTN|"
-        r"Dengue|Dengue Fever|Malaria|Pneumonia|COVID-19|Myocardial Infarction|MI|CAD|"
-        r"Asthma|COPD|Chronic Kidney Disease|CKD|Acute Kidney Injury|AKI|Stroke|CVA|"
-        r"Tuberculosis|TB|Typhoid|Sepsis|Anemia|Hypothyroidism|Hyperthyroidism|"
-        r"मधुमेह|डायबिटीज|उच्च रक्तचाप|डेंगू|मलेरिया|निमोनिया|हृदय रोग)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\b(?:HbA1c|Hemoglobin|WBC|RBC|Platelets?|Creatinine|BUN|Urea|Bilirubin|"
-        r"SGOT|SGPT|ALT|AST|Alkaline Phosphatase|Total Cholesterol|Triglycerides|"
-        r"HDL|LDL|VLDL|Serum Electrolytes|Na\+|K\+|Cl\-)\b",
-        re.IGNORECASE,
-    ),
-]
-
-PHONE_PATTERN = re.compile(r"(?:\+?91[\-\s]?)?[6-9]\d{9}\b")
-EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
-AADHAAR_PATTERN = re.compile(r"\b\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b")
-ABHA_PATTERN = re.compile(r"\b(?:ABHA[\-:]?\s*)?\d{2}[\-]\d{4}[\-]\d{4}[\-]\d{4}\b|\bABHA\|\d+\b", re.IGNORECASE)
-PAN_PATTERN = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b")
-LOCAL_ID_PATTERN = re.compile(r"\b(?:MRN|UHID|PAT|IPD|OPD)[\-#:]?\s*[A-Z0-9]{4,12}\b", re.IGNORECASE)
-PINCODE_PATTERN = re.compile(r"\b[1-9]\d{2}\s?\d{3}\b")
-DATE_PATTERN = re.compile(r"\b(?:\d{4}[\-/]\d{2}[\-/]\d{2}|\d{2}[\-/]\d{2}[\-/]\d{4})\b")
-AGE_PATTERN = re.compile(r"\b(?:Age\s*[:=]?\s*(\d{1,3})|(\d{1,3})\s*(?:years?|yrs?|yr|y/o|साल|वर्ष))\b", re.IGNORECASE)
-NAME_CUES_EN = re.compile(r"\b(?:Patient|Pt|Name|Mr\.|Mrs\.|Ms\.|Dr\.|Shri|Smt)\s*[:=]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b")
-NAME_CUES_HI = re.compile(r"(?:मरीज|रोगी|नाम|श्री|श्रीमती|डॉ\.)\s*[:=]?\s*([\u0900-\u097F]+(?:\s+[\u0900-\u097F]+){1,3})")
-
-
-STRUCTURED_TEXT_PII_PATTERNS = (
-    ("PATIENT_NAME", re.compile(r'"(?:patient_?)?name"\s*:\s*"([^"\r\n]+)"', re.IGNORECASE)),
-    ("PHONE", re.compile(r'"(?:phone|mobile|telephone|contact(?:_?number)?)"\s*:\s*"([^"\r\n]+)"', re.IGNORECASE)),
-    ("ADDRESS", re.compile(r'"(?:address|residential_?address|location)"\s*:\s*"([^"\r\n]+)"', re.IGNORECASE)),
-    ("EMAIL", re.compile(r'"(?:email|e_?mail)"\s*:\s*"([^"\r\n]+)"', re.IGNORECASE)),
-)
-
-
-class UIPIIDetector(PIIDetector):
-    def analyze_record(self, record: PatientRecord) -> list[DetectionSpan]:
-        spans: list[DetectionSpan] = []
-        attrs = record.extracted_patient_attributes
-
-        for node in record.fields:
-            text = node.raw_value
-            if not text:
-                continue
-
-            is_name_field = any(k in node.header_key.lower() for k in ("name", "patient_name", "pt_name", "naam"))
-            if is_name_field and text.strip():
-                spans.append(
-                    DetectionSpan(
-                        record_ref=record.record_ref,
-                        field_path=node.field_path,
-                        start=0,
-                        end=len(text),
-                        category="PATIENT_NAME",
-                        role=SpanRole.DIRECT_PII,
-                        confidence=0.98,
-                        detector_source="ui_detector_key",
-                    )
-                )
-                attrs.setdefault("PATIENT_NAME", []).append(text.strip())
-                attrs.setdefault("names", []).append(text.strip())
-            else:
-                for match in NAME_CUES_EN.finditer(text):
-                    start, end = match.span(1)
-                    val = match.group(1).strip()
-                    spans.append(
-                        DetectionSpan(
-                            record_ref=record.record_ref,
-                            field_path=node.field_path,
-                            start=start,
-                            end=end,
-                            category="PATIENT_NAME",
-                            role=SpanRole.DIRECT_PII,
-                            confidence=0.92,
-                            detector_source="ui_detector_en_cue",
-                        )
-                    )
-                    attrs.setdefault("PATIENT_NAME", []).append(val)
-                    attrs.setdefault("names", []).append(val)
-
-                for match in NAME_CUES_HI.finditer(text):
-                    start, end = match.span(1)
-                    val = match.group(1).strip()
-                    spans.append(
-                        DetectionSpan(
-                            record_ref=record.record_ref,
-                            field_path=node.field_path,
-                            start=start,
-                            end=end,
-                            category="PATIENT_NAME",
-                            role=SpanRole.DIRECT_PII,
-                            confidence=0.95,
-                            detector_source="ui_detector_hi_cue",
-                        )
-                    )
-                    attrs.setdefault("PATIENT_NAME", []).append(val)
-                    attrs.setdefault("names", []).append(val)
-
-            # Text exports can contain JSON-style keys even when their filename
-            # ends in .txt. Protect those explicit PII values as structured data.
-            for category, pattern in STRUCTURED_TEXT_PII_PATTERNS:
-                for match in pattern.finditer(text):
-                    start, end = match.span(1)
-                    value = match.group(1).strip()
-                    if not value:
-                        continue
-                    spans.append(
-                        DetectionSpan(
-                            record_ref=record.record_ref,
-                            field_path=node.field_path,
-                            start=start,
-                            end=end,
-                            category=category,
-                            role=SpanRole.DIRECT_PII,
-                            confidence=0.99,
-                            detector_source="ui_detector_structured_text",
-                        )
-                    )
-                    if category == "PATIENT_NAME":
-                        attrs.setdefault("PATIENT_NAME", []).append(value)
-                        attrs.setdefault("names", []).append(value)
-                    elif category == "PHONE":
-                        phone = re.sub(r"\D", "", value)
-                        attrs.setdefault("PHONE", []).append(phone)
-                        attrs.setdefault("phones", []).append(phone)
-
-            # Identifiers
-            for m in ABHA_PATTERN.finditer(text):
-                clean_id = m.group(0).strip()
-                spans.append(
-                    DetectionSpan(
-                        record_ref=record.record_ref,
-                        field_path=node.field_path,
-                        start=m.start(),
-                        end=m.end(),
-                        category="PATIENT_IDENTIFIER",
-                        role=SpanRole.DIRECT_PII,
-                        confidence=0.99,
-                        detector_source="ui_detector_abha",
-                    )
-                )
-                attrs.setdefault("ids", []).append(f"ABHA|{clean_id}")
-                attrs.setdefault("ABHA", []).append(clean_id)
-
-            for m in AADHAAR_PATTERN.finditer(text):
-                clean_id = m.group(0).strip()
-                spans.append(
-                    DetectionSpan(
-                        record_ref=record.record_ref,
-                        field_path=node.field_path,
-                        start=m.start(),
-                        end=m.end(),
-                        category="PATIENT_IDENTIFIER",
-                        role=SpanRole.DIRECT_PII,
-                        confidence=0.96,
-                        detector_source="ui_detector_aadhaar",
-                    )
-                )
-                attrs.setdefault("ids", []).append(f"AADHAAR|{clean_id}")
-                attrs.setdefault("AADHAAR", []).append(clean_id)
-
-            for m in PHONE_PATTERN.finditer(text):
-                clean_phone = re.sub(r"\D", "", m.group(0))[-10:]
-                spans.append(
-                    DetectionSpan(
-                        record_ref=record.record_ref,
-                        field_path=node.field_path,
-                        start=m.start(),
-                        end=m.end(),
-                        category="PHONE",
-                        role=SpanRole.DIRECT_PII,
-                        confidence=0.97,
-                        detector_source="ui_detector_phone",
-                    )
-                )
-                attrs.setdefault("PHONE", []).append(clean_phone)
-                attrs.setdefault("phones", []).append(clean_phone)
-
-            for m in EMAIL_PATTERN.finditer(text):
-                spans.append(
-                    DetectionSpan(
-                        record_ref=record.record_ref,
-                        field_path=node.field_path,
-                        start=m.start(),
-                        end=m.end(),
-                        category="EMAIL",
-                        role=SpanRole.DIRECT_PII,
-                        confidence=0.98,
-                        detector_source="ui_detector_email",
-                    )
-                )
-
-            # Dates
-            is_date_field = any(k in node.header_key.lower() for k in ("date", "dob", "birth", "admit", "discharge"))
-            if is_date_field or re.search(r"^\d{4}-\d{2}-\d{2}$", text.strip()):
-                spans.append(
-                    DetectionSpan(
-                        record_ref=record.record_ref,
-                        field_path=node.field_path,
-                        start=0,
-                        end=len(text),
-                        category="DATE",
-                        role=SpanRole.QUASI_IDENTIFIER,
-                        confidence=0.96,
-                        detector_source="ui_detector_date_field",
-                    )
-                )
-                attrs.setdefault("dobs", []).append(text.strip())
-            else:
-                for m in DATE_PATTERN.finditer(text):
-                    spans.append(
-                        DetectionSpan(
-                            record_ref=record.record_ref,
-                            field_path=node.field_path,
-                            start=m.start(),
-                            end=m.end(),
-                            category="DATE",
-                            role=SpanRole.QUASI_IDENTIFIER,
-                            confidence=0.92,
-                            detector_source="ui_detector_date_regex",
-                        )
-                    )
-
-            # Age
-            is_age_field = any(k in node.header_key.lower() for k in ("age", "aayu", "umar"))
-            if is_age_field and text.strip().isdigit():
-                spans.append(
-                    DetectionSpan(
-                        record_ref=record.record_ref,
-                        field_path=node.field_path,
-                        start=0,
-                        end=len(text),
-                        category="AGE",
-                        role=SpanRole.QUASI_IDENTIFIER,
-                        confidence=0.99,
-                        detector_source="ui_detector_age_field",
-                    )
-                )
-                attrs.setdefault("ages", []).append(text.strip())
-            else:
-                for m in AGE_PATTERN.finditer(text):
-                    age_val = m.group(1) or m.group(2)
-                    spans.append(
-                        DetectionSpan(
-                            record_ref=record.record_ref,
-                            field_path=node.field_path,
-                            start=m.start(),
-                            end=m.end(),
-                            category="AGE",
-                            role=SpanRole.QUASI_IDENTIFIER,
-                            confidence=0.94,
-                            detector_source="ui_detector_age_regex",
-                        )
-                    )
-                    if age_val:
-                        attrs.setdefault("ages", []).append(age_val)
-
-        return spans
-
-
-class UIClinicalGuard(ClinicalGuard):
-    def protect_clinical(
-        self, record: PatientRecord, spans: Sequence[DetectionSpan]
-    ) -> tuple[list[DetectionSpan], list[str]]:
-        protected_spans: list[DetectionSpan] = []
-        clinical_attributes: list[str] = []
-        clinical_spans_found: list[DetectionSpan] = []
-
-        for node in record.fields:
-            text = node.raw_value
-            if not text:
-                continue
-            for pat in CLINICAL_PATTERNS:
-                for match in pat.finditer(text):
-                    start, end = match.span()
-                    val = match.group(0).strip()
-                    cspan = DetectionSpan(
-                        record_ref=record.record_ref,
-                        field_path=node.field_path,
-                        start=start,
-                        end=end,
-                        category="CLINICAL_TERM",
-                        role=SpanRole.CLINICAL_PROTECTED,
-                        confidence=1.0,
-                        detector_source="ui_clinical_guard",
-                    )
-                    clinical_spans_found.append(cspan)
-                    clinical_attributes.append(val)
-
-        for pii_span in spans:
-            overlaps = any(
-                c.field_path == pii_span.field_path
-                and pii_span.start < c.end
-                and pii_span.end > c.start
-                for c in clinical_spans_found
-            )
-            if overlaps:
-                protected_spans.append(
-                    DetectionSpan(
-                        record_ref=pii_span.record_ref,
-                        field_path=pii_span.field_path,
-                        start=pii_span.start,
-                        end=pii_span.end,
-                        category=pii_span.category,
-                        role=SpanRole.CLINICAL_PROTECTED,
-                        confidence=1.0,
-                        detector_source="clinical_override",
-                    )
-                )
-            else:
-                protected_spans.append(pii_span)
-
-        for c in clinical_spans_found:
-            if not any(
-                p.field_path == c.field_path and p.start == c.start and p.end == c.end
-                for p in protected_spans
-            ):
-                protected_spans.append(c)
-
-        return protected_spans, list(set(clinical_attributes))
-
-
-class ComprehensiveUIPrivacyEngine:
-    """Wraps AdaptivePrivacyEngine and ensures direct PII without explicit decisions receives redaction."""
-
-    def __init__(self) -> None:
-        self.base = AdaptivePrivacyEngine()
-
-    def transform(
-        self,
-        records: Sequence[PatientRecord],
-        clusters: Sequence[PatientCluster],
-        secret_key: bytes,
-    ) -> list[PrivacyDecision]:
-        decisions = self.base.transform(records, clusters, secret_key)
-        covered = {(d.record_ref, d.field_path, d.start, d.end) for d in decisions if d.start is not None}
-        for rec in records:
-            for s in rec.detections:
-                if s.role == SpanRole.DIRECT_PII and (s.record_ref, s.field_path, s.start, s.end) not in covered:
-                    tag = f"[REDACTED-{s.category}]" if s.category else "[REDACTED]"
-                    decisions.append(
-                        PrivacyDecision(
-                            record_ref=s.record_ref,
-                            field_path=s.field_path,
-                            start=s.start,
-                            end=s.end,
-                            transform_type=TransformType.REDACT,
-                            replacement_value=tag,
-                        )
-                    )
-        return decisions
 
 
 # --- Preset Scenario Definitions ---
@@ -521,9 +167,12 @@ def ensure_workspace() -> None:
 
 
 class RakshaAPIHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        # URLs can contain uploaded filenames and patient names.
+        return
     def _send_cors_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def _send_json(self, status: int, data: Any) -> None:
@@ -540,6 +189,14 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
         self._send_cors_headers()
         self.end_headers()
 
+    def do_HEAD(self) -> None:
+        """Respond to Render's availability probe without a response body."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", "0")
+        self._send_cors_headers()
+        self.end_headers()
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
@@ -549,13 +206,19 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
 
         if path == "/api/status":
             secret = os.environ.get("RAKSHA_SECRET", "")
+            head = repo_head_version()
+            policy_path = Path(__file__).parent / "config/policy.yaml"
             self._send_json(
                 200,
                 {
                     "status": "ready",
                     "version": "1.0.0",
+                    "engine_version": ENGINE_VERSION,
+                    "repo_head": head,
+                    "engine_outdated": bool(head != "unknown" and ENGINE_VERSION != head),
+                    "policy_hash": compute_policy_hash(policy_path),
                     "secret_set": bool(secret),
-                    "secret_hint": secret[:4] + "..." + secret[-4:] if len(secret) >= 8 else "set",
+                    "secret_hint": 'configured' if secret else 'missing',
                     "input_files": len(list(INPUT_DIR.iterdir())) if INPUT_DIR.exists() else 0,
                     "has_output": (OUTPUT_DIR / "report.json").exists(),
                 },
@@ -580,7 +243,9 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
                         fmt = "csv" if ext == ".csv" else "tsv" if ext == ".tsv" else "fhir_r4" if ".fhir." in p.name else "json" if ext == ".json" else "text" if ext == ".txt" else "unsupported"
                         preview = ""
                         try:
-                            preview = p.read_text(encoding="utf-8", errors="replace")[:300]
+                            decoded = decode_bytes_to_utf8(p.read_bytes()).text
+                            fmt = str(detect_format(p.name, decoded)[0])
+                            preview = decoded[:300]
                         except Exception:
                             preview = f"[Binary / Unreadable, {size} bytes]"
                         files_info.append({
@@ -604,7 +269,17 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
                 for line in records_file.read_text(encoding="utf-8").splitlines():
                     if line.strip():
                         records.append(json.loads(line))
-            self._send_json(200, {"report": report, "records": records})
+            head = repo_head_version()
+            self._send_json(
+                200,
+                {
+                    "report": report,
+                    "records": records,
+                    "engine": report.get("engine", {"version": ENGINE_VERSION, "policy_hash": "none"}),
+                    "engine_outdated": bool(head != "unknown" and ENGINE_VERSION != head),
+                    "verification": output_verification(),
+                },
+            )
             return
 
         if path == "/api/diff":
@@ -643,11 +318,16 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
                     "status": status,
                     "original": orig_text,
                     "sanitized": san_text,
+                    'verification': output_verification(),
                 },
             )
             return
 
         if path == "/api/download-zip":
+            if not output_verification()['export_allowed']:
+                self._send_json(409, {'error': 'Export blocked: independent verification is incomplete or leaks were detected.',
+                                      'verification': output_verification()})
+                return
             if not OUTPUT_DIR.exists() or not (OUTPUT_DIR / "report.json").exists():
                 self._send_json(404, {"error": "No output available to download."})
                 return
@@ -737,6 +417,7 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
                 200,
                 {
                     "success": True,
+                    'verification': output_verification(),
                     "preset": preset_key,
                     "title": preset_data["title"],
                     "loaded_files": loaded_files,
@@ -753,6 +434,9 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
                 is_base64 = payload.get("is_base64", False)
 
                 target = INPUT_DIR / filename
+                if not target.resolve().is_relative_to(INPUT_DIR.resolve()):
+                    self._send_json(400, {'error': 'Invalid upload path'})
+                    return
                 if is_base64:
                     target.write_bytes(base64.b64decode(content))
                 else:
@@ -790,16 +474,14 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
             shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
             ensure_workspace()
 
-            pipeline = RakshaPipeline(
-                detector=UIPIIDetector(),
-                clinical_guard=UIClinicalGuard(),
-                linker=ConservativeLinkageEngine(),
-                privacy_engine=ComprehensiveUIPrivacyEngine(),
-                serializer=SafeOutputSerializer(),
-            )
+            pipeline = RakshaPipeline(policy_path=Path(__file__).parent / 'config/policy.yaml')
 
             start_t = time.perf_counter()
-            metrics = pipeline.run(input_dir=INPUT_DIR, output_dir=OUTPUT_DIR)
+            try:
+                metrics = pipeline.run(input_dir=INPUT_DIR, output_dir=OUTPUT_DIR)
+            except Exception:
+                self._send_json(500, {'error': 'Pipeline failed; output is unverified.'})
+                return
             duration = time.perf_counter() - start_t
 
             # Read report.json and records.jsonl
@@ -828,10 +510,13 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
                     "identifiers": rec.get("identifiers_detected", 0),
                 })
 
+            head = repo_head_version()
             self._send_json(
                 200,
                 {
                     "success": True,
+                    "engine": report.get("engine", {"version": ENGINE_VERSION, "policy_hash": "none"}),
+                    "engine_outdated": bool(head != "unknown" and ENGINE_VERSION != head),
                     "metrics": {
                         "files_total": metrics.files_total,
                         "files_sanitized": metrics.files_sanitized,
@@ -844,6 +529,7 @@ class RakshaAPIHandler(BaseHTTPRequestHandler):
                         "seconds": round(duration, 4),
                         "peak_rss_mb": round(metrics.peak_rss_mb, 2),
                     },
+                    'verification': output_verification(),
                     "report": report,
                     "records_count": len(records),
                     "clusters": clusters_map,

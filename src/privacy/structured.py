@@ -15,6 +15,12 @@ from src.privacy.date_shift import derive_date_offset, shift_date_value
 from src.privacy.generalization import age_band
 from src.privacy.locations import hierarchy_outputs
 from src.detection.normalization.names import normalize_person_name
+from src.privacy.text_policy import (
+    entity_decisions,
+    prepare_text_records,
+    structural_text_decisions,
+    temporal_decisions,
+)
 
 
 _KINSHIP_ONLY = frozenset({
@@ -73,7 +79,7 @@ def classify_field(header: str, values: Iterable[str] = ()) -> str:
 def typed_token(category: str) -> str:
     c = category.upper()
     mapping = {
-        "PATIENT_NAME": "[PATIENT]", "PERSON_NAME": "[PATIENT]",
+        "PATIENT_NAME": "[PATIENT]", "PERSON_NAME": "[PERSON]",
         "RELATIVE_NAME": "[RELATIVE]", "CLINICIAN_NAME": "[STAFF]",
         "STAFF_NAME": "[STAFF]", "PHONE": "[PHONE]", "AADHAAR": "[AADHAAR]",
         "PAN": "[PAN]", "ABHA": "[ABHA]", "DL": "[DL]", "EMAIL": "[EMAIL]",
@@ -227,7 +233,7 @@ _EXTRA_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)\bDL\s*[A-Z]{0,2}\d{0,2}[\s-]*\d{7,13}\b"), "[DL]"),
     (re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)"), "[IP]"),
     (re.compile(r"(?i)\b[A-Za-z0-9._-]+\\[A-Za-z0-9._-]+\b"), "[USERNAME]"),
-    (re.compile(r"(?i)\b(?:MLC|FIR|GD|CASE)\s*(?:NO\.?)?\s*[A-Z0-9/-]+"), "[CASE_NO]"),
+    (re.compile(r"(?i)\b(?:MLC|FIR|GD|CASE\s+NO\.?|CLAIM(?:\s+NO\.?)?)\s*[:#-]?\s*\d[A-Z0-9/-]*"), "[CASE_NO]"),
     (re.compile(r"(?i)\b(?:tattoo(?:ed)?|scar|mole|birthmark|gold\s+tooth)\b[^,;.]*"), "[ID_MARK]"),
     (re.compile(r"(?i)\bnot\s+the\s+[^,;.!?]+[.!?]?"), "[IDENTITY_HINT]"),
     (re.compile(r"(?i)\bno\s+relation\s+to\s+(?:Dr\.?\s+)?[A-Z][\w'-]+(?:\s+[A-Z][\w'-]+){0,3}[.!?]?"), "[IDENTITY_HINT]"),
@@ -237,6 +243,22 @@ _EXTRA_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         r"(?:[;,.]\s*)?\b(?:pehla\s+case|sabse\s+buzurg|only\s+patient|famous|vip|celebrity)\b[^,;.!?]*|"
         r"(?:[;,.]\s*)?(?:पहला\s+मामला|सबसे\s+बुज़ुर्ग|एकमात्र\s+मरीज़)[^,;.!?]*"
     ), ""),
+    (re.compile(
+        r"(?i)\b(?:pradhan|up[- ]?pradhan|sarpanch|ward\s+member)\b"
+        r"(?:\s+of)?\s+[^,;.!?]{2,60}"
+    ), "[IDENTITY_HINT]"),
+    (re.compile(
+        r"(?i)(?<![/.])\b(?:viral|followers?|social[- ]media|facebook|instagram|whatsapp\s+group)\b"
+        r"[^,;.!?]{0,80}"
+    ), "[IDENTITY_HINT]"),
+    (re.compile(
+        r"(?i)\b(?:only|sole|well[- ]known|famous)\s+[A-Za-z -]{3,40}"
+        r"\s+(?:in|from|near)\s+[^,;.!?]{2,50}"
+    ), "[IDENTITY_HINT]"),
+    (re.compile(
+        r"(?i)\b(?:holi|diwali|eid|baisakhi|christmas|dussehra|navratri)\s+"
+        r"(?:ki|ke|on|evening|morning|night|shaam|raat|subah)\b"
+    ), "[DATE]"),
 )
 
 
@@ -367,6 +389,15 @@ def _phonetic(value: str) -> str:
     return re.sub(r"[^a-z]", "", s)
 
 
+def _local_name_context(text: str, start: int, end: int) -> bool:
+    before = text[max(0, start - 35):start]
+    after = text[end:min(len(text), end + 20)]
+    return bool(
+        re.search(r"(?i)(?:\b(?:patient|name|son|daughter|wife|husband|guardian|informant|Mr|Mrs|Ms|Shri|Smt|urf|alias)\b|['\"‘’]|(?:^|\n)[^\n:]{0,20}:)[ \t]*$", before)
+        or re.match(r"(?i)[ \t]*(?:ji|sahab|ne\b|:|['\"‘’])", after)
+    )
+
+
 def _name_memory(records: Sequence[PatientRecord]) -> list[str]:
     names: list[str] = []
     for rec in records:
@@ -396,6 +427,7 @@ def structure_aware_decisions(
 ) -> list[PrivacyDecision]:
     """Create schema-led decisions after pseudonym assignment and before serialization."""
     decisions: list[PrivacyDecision] = []
+    prepare_text_records(records, secret_key)
     memory = _name_memory(records)
     location_outputs = _location_outputs(records, k_location)
     hierarchy_entries = [(rec.record_ref, node.field_path, rec.pseudonym_id or rec.record_ref,
@@ -459,6 +491,8 @@ def structure_aware_decisions(
                 continue
             role = classify_field(node.header_key, values_by_header.get(node.header_key, ())) if node.is_structured_key else "FREE_TEXT"
             path = node.field_path
+            if role == 'DOCTOR':
+                continue
             if rec.field_metadata.get('metadata_only'):
                 if node.header_key.casefold() in {'login', 'machine', 'operator', 'username', 'host'}:
                     decisions.append(_whole(rec, path, '[USERNAME]'))
@@ -520,7 +554,7 @@ def structure_aware_decisions(
                     r"\1 [RELATIVE]", raw,
                 )
                 staff = re.sub(
-                    r"(?i)(\b(?:EMT|Sr\.|Sister|Nurse|Ct\.|Constable|clerk)\s+)[A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,2}",
+                    r"(?i)(\b(?:EMT|Sr\.|Sister|Nurse|Ct\.|Constable|clerk|ASHA(?:\s+(?:worker|karyakarta))?|ward\s+boy|MRD\s+typist)\s+)[A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,2}",
                     r"\1[STAFF]", rel,
                 )
                 for locality, replacement in locality_map.items():
@@ -564,27 +598,58 @@ def structure_aware_decisions(
                     ))
 
             # Per-run full-name sweep, including common transliteration spellings.
-            word_matches = list(re.finditer(r"[A-Za-z][A-Za-z.']*", raw))
-            for known in memory:
-                count = len(known.split())
-                if count < 1:
-                    continue
-                for pos in range(0, len(word_matches) - count + 1):
-                    group = word_matches[pos : pos + count]
-                    ctext = raw[group[0].start() : group[-1].end()]
-                    if _phonetic(ctext) == _phonetic(known):
-                        decisions.append(PrivacyDecision(rec.record_ref, path, group[0].start(), group[-1].end(),
-                                                         TransformType.REDACT, "[PATIENT]"))
+            if rec.loc != "doc":
+                word_matches = list(re.finditer(r"[A-Za-z][A-Za-z.']*", raw))
+                for known in memory:
+                    count = len(known.split())
+                    if count < 1:
+                        continue
+                    for pos in range(0, len(word_matches) - count + 1):
+                        group = word_matches[pos : pos + count]
+                        ctext = raw[group[0].start() : group[-1].end()]
+                        if _phonetic(ctext) == _phonetic(known):
+                            if count == 1 and not _local_name_context(raw, group[0].start(), group[-1].end()):
+                                continue
+                            decisions.append(PrivacyDecision(rec.record_ref, path, group[0].start(), group[-1].end(),
+                                                             TransformType.REDACT, "[PATIENT]"))
 
-            # Staff cues are redacted, but doctors deliberately remain useful.
-            for match in re.finditer(
-                r"(?i)(?<!Dr\.\s)\b(?:EMT|Sr\.|Sister|Nurse|Ct\.|Constable|clerk|Printed\s+by|Exported\s+by|verified\s+by|Typed\s+by)\s*:?\s+[A-Z][\w.-]*(?:\s+[A-Z][\w.-]*){0,2}", raw
-            ):
-                decisions.append(PrivacyDecision(rec.record_ref, path, match.start(), match.end(),
-                                                 TransformType.REDACT, "[STAFF]"))
+                # Staff cues are redacted, but doctors deliberately remain useful.
+                for match in re.finditer(
+                    r"(?i)(?<!Dr\.\s)\b(?:EMT|Sr\.|Sister|Nurse|Ct\.|Constable|clerk|ASHA(?:\s+(?:worker|karyakarta))?|ward\s+boy|MRD\s+typist|Exported\s+by|verified\s+by|Typed\s+by|(?:Printed\s+by(?!\s*:?\s*[A-Za-z0-9_.-]+\\)))\s*:?\s+[A-Z][\w.-]*(?:\s+[A-Z][\w.-]*){0,2}", raw
+                ):
+                    decisions.append(PrivacyDecision(rec.record_ref, path, match.start(), match.end(),
+                                                     TransformType.REDACT, "[STAFF]"))
+
+                for match in re.finditer(
+                    r"(?i)\b(?P<role>another\s+patient|co[- ]?patient|blood\s+donor|donor|neighbou?r)\s*:?\s+"
+                    r"(?P<name>[A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,2})",
+                    raw,
+                ):
+                    token = "[PATIENT]" if "patient" in match.group('role').casefold() else "[RELATIVE]"
+                    decisions.append(PrivacyDecision(
+                        rec.record_ref, path, match.start('name'), match.end('name'),
+                        TransformType.REDACT, token,
+                    ))
+
+        decisions.extend(entity_decisions(rec))
+        decisions.extend(temporal_decisions(rec, date_offset, age_width, age_top_code))
+        decisions.extend(structural_text_decisions(rec))
 
         # Existing detector results still get safe typed tokens when not otherwise covered.
         for span in rec.detections:
+            owner = next((node for node in rec.fields if node.field_path == span.field_path), None)
+            if owner is not None and classify_field(owner.header_key) == 'DOCTOR':
+                continue
+            if rec.field_metadata.get("is_footer_row") and span.category.upper() in {
+                "PATIENT_NAME", "PERSON_NAME", "RELATIVE_NAME",
+            }:
+                continue
+            if rec.loc == "doc" and span.category.upper() in {
+                "PATIENT_NAME", "PERSON_NAME", "RELATIVE_NAME", "CLINICIAN_NAME",
+                "DATE", "VISIT_DATE", "ADMISSION_DATE", "DISCHARGE_DATE", "DOB",
+                "DATE_OF_BIRTH", "TEXT_DATE", "AGE", "ADDRESS",
+            }:
+                continue
             if (
                 span.role == SpanRole.QUASI_IDENTIFIER
                 and span.category.upper() in {

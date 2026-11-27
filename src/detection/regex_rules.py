@@ -173,6 +173,11 @@ def detect_regex_candidates(
     norm = idx_text.normalized
     candidates: list[RegexCandidate] = []
     occupied_strong_ids: list[tuple[int, int]] = []
+    for match in re.finditer(r'(?i)(?<!\w)(?:[X*]{4}[ -]?){2}\d{4}(?!\d)', norm):
+        start, end = idx_text.to_original_span(match.start(), match.end())
+        candidates.append(RegexCandidate(start, end, 'AADHAAR', SpanRole.DIRECT_PII,
+                                          .99, 'masked_identifier_shape'))
+        occupied_strong_ids.append(match.span())
 
     # 1. ABHA PHR addresses and Emails
     for m in _ABHA_PHR_RE.finditer(norm):

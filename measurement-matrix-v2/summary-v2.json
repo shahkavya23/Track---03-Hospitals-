@@ -1,0 +1,80 @@
+[
+  {
+    "seed": 1,
+    "profile": "tune",
+    "privacy": 93.333,
+    "pii_detection": 98.23,
+    "medical": 100.0,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 98.594,
+    "canaries": 0,
+    "report_count_mismatches": 0
+  },
+  {
+    "seed": 2,
+    "profile": "tune",
+    "privacy": 95.667,
+    "pii_detection": 98.248,
+    "medical": 100.0,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 98.986,
+    "canaries": 0,
+    "report_count_mismatches": 0
+  },
+  {
+    "seed": 3,
+    "profile": "tune",
+    "privacy": 93.667,
+    "pii_detection": 98.212,
+    "medical": 100.0,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 98.646,
+    "canaries": 0,
+    "report_count_mismatches": 0
+  },
+  {
+    "seed": 4,
+    "profile": "holdout",
+    "privacy": 39.333,
+    "pii_detection": 98.117,
+    "medical": 66.667,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 64.02,
+    "canaries": 1,
+    "report_count_mismatches": 0
+  },
+  {
+    "seed": 5,
+    "profile": "holdout",
+    "privacy": 37.667,
+    "pii_detection": 98.084,
+    "medical": 66.667,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 63.736,
+    "canaries": 1,
+    "report_count_mismatches": 0
+  },
+  {
+    "seed": 6,
+    "profile": "holdout",
+    "privacy": 37.0,
+    "pii_detection": 98.092,
+    "medical": 66.667,
+    "identity": 100.0,
+    "validity": 100.0,
+    "speed_reliability": 100.0,
+    "total": 63.626,
+    "canaries": 1,
+    "report_count_mismatches": 0
+  }
+]

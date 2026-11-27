@@ -21,7 +21,7 @@ class OutputValidationError(Exception):
 def _privacy_safe_clinical_form(value: str) -> str:
     """Mirror typed identifier removal when validating a mixed clinical string."""
     value = re.sub(
-        r"(?i)\b(?:MLC|FIR|GD|CASE)\s*(?:NO\.?)?\s*[A-Z0-9/-]+",
+        r"(?i)\b(?:MLC|FIR|GD|CASE\s+NO\.?|CLAIM(?:\s+NO\.?)?)\s*[:#-]?\s*\d[A-Z0-9/-]*",
         "[CASE_NO]",
         value,
     )
@@ -101,6 +101,10 @@ def validate_serialized_output(
         # Verify UTF-8 decodability and JSON/FHIR structural validity on disk.
         text = out_file.read_text(encoding="utf-8")
         searchable_text = text
+        if src.format == FileFormat.JSONL:
+            for line in text.splitlines():
+                if line.strip():
+                    json.loads(line)
         if src.format in (FileFormat.JSON, FileFormat.FHIR_R4):
             parsed = json.loads(text)
             if src.format == FileFormat.FHIR_R4:

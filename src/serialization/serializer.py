@@ -14,7 +14,7 @@ from src.contracts import AuditMetrics, FileFormat, ParseStatus, SourceFile
 from src.reporting import write_records_jsonl, write_report_json
 
 from .validator import validate_serialized_output
-from .publish_gate import MemoryTarget, validate_candidate
+from .publish_gate import MemoryTarget, reredact_candidate, reredact_registry, validate_candidate
 from .writers import (
     resolve_safe_output_path,
     write_fhir_source,
@@ -59,9 +59,19 @@ class SafeOutputSerializer:
                 writer = {
                     FileFormat.CSV: write_tabular_source, FileFormat.TSV: write_tabular_source,
                     FileFormat.JSON: write_json_source, FileFormat.FHIR_R4: write_fhir_source,
+                    FileFormat.JSONL: write_json_source,
                     FileFormat.TEXT: write_text_source,
                 }[src.format]
                 writer(src, candidate)
+                late = reredact_candidate(candidate.value, max_iterations=3)
+                candidate.value = late.value
+                candidate.value, registry_late = reredact_registry(src, candidate.value)
+                if src.records:
+                    src.records[0].field_metadata['late_redaction_replacements'] = late.replacements + registry_late
+                    src.records[0].field_metadata['late_redaction_iterations'] = late.iterations
+                    src.records[0].field_metadata['late_redaction_categories'] = late.late_categories
+                if late.remaining:
+                    raise ValueError('residual_after_reredact')
                 validate_candidate(src, candidate.value)
                 # Only verified sanitized bytes reach disk. Same-directory rename
                 # is atomic; the unverified rendering never leaves memory.
@@ -70,9 +80,16 @@ class SafeOutputSerializer:
                     staging = Path(handle.name)
                     handle.write(candidate.value)
                 os.replace(staging, target_path)
-            except Exception:
+            except Exception as exc:
                 src.parse_status = ParseStatus.QUARANTINED
-                src.quarantine_reason = 'output verification failed'
+                reason_map = {
+                    'independent residual identifiers': 'residual_after_reredact',
+                    'residual identifiers': 'registry_residual_after_reredact',
+                    'clinical integrity': 'clinical_integrity_failure',
+                    'unsafe output': 'unsafe_output',
+                    'residual_after_reredact': 'residual_after_reredact',
+                }
+                src.quarantine_reason = reason_map.get(str(exc), 'serialization_failure') if isinstance(exc, ValueError) else 'serialization_failure'
                 src.sanitized_relative_path = None
                 target_path.unlink(missing_ok=True)
                 metrics.files[idx] = type(metrics.files[idx])(
@@ -101,6 +118,20 @@ class SafeOutputSerializer:
         metrics.substitutions_by_type = {
             key: count for key, count in substitution_counts.items() if count
         }
+        metrics.applied_replacements = sum(
+            len(record.field_metadata.get('applied_events', {})) +
+            int(record.field_metadata.get('late_redaction_replacements', 0))
+            for source in sources if source.parse_status == ParseStatus.PARSED
+            for record in source.records
+        )
+        metrics.residual_scanner_late_catches = sum(
+            int(record.field_metadata.get('late_redaction_replacements', 0))
+            for source in sources for record in source.records
+        )
+        metrics.reredaction_iterations = max((
+            int(record.field_metadata.get('late_redaction_iterations', 0))
+            for source in sources for record in source.records
+        ), default=0)
 
         write_records_jsonl(sources, output_dir)
         write_report_json(metrics, output_dir)

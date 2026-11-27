@@ -30,7 +30,7 @@ def test_family_output_pointers_resolve(tmp_path, monkeypatch):
     import json
     from pathlib import Path
     from src.pipeline import RakshaPipeline
-    fixture = Path(__file__).parents[1] / 'My personal testing' / 'family_export.json'
+    fixture = Path(__file__).parents[1] / 'fixtures' / 'family_export_v1.json'
     source = tmp_path / 'input'
     source.mkdir()
     (source / 'family.json').write_bytes(fixture.read_bytes())

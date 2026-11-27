@@ -168,7 +168,7 @@ class SerializationAndReportingTests(unittest.TestCase):
             att_node = next(n for n in fhir_rec.fields if n.field_path.endswith("@decoded_attachment"))
             hindi_start = att_node.raw_value.index("मोहम्मद आरिफ")
             fhir_rec.privacy_decisions = [
-                PrivacyDecision(fhir_rec.record_ref, "/entry/0/resource/name/0/text", 0, 13, TransformType.REDACT, "[NAME]"),
+                PrivacyDecision(fhir_rec.record_ref, "/entry/0/resource/name/0/text", 0, 13, TransformType.REDACT, "[PATIENT]"),
                 PrivacyDecision(fhir_rec.record_ref, "/entry/0/resource/id", 0, 5, TransformType.PSEUDONYMIZE, "PSN-ARIF01"),
                 PrivacyDecision(fhir_rec.record_ref, att_node.field_path, hindi_start, hindi_start + len("मोहम्मद आरिफ"), TransformType.PSEUDONYMIZE, "PSN-ARIF01"),
             ]

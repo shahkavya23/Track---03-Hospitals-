@@ -46,6 +46,10 @@ def _has_unterminated_quotes(text: str, delimiter: str) -> bool:
 
 def _detect_csv_delimiter(text: str, allowed_delimiters: Sequence[str]) -> str:
     """Choose delimiter for CSV files without altering TSV strict tab semantics."""
+    try:
+        return csv.Sniffer().sniff(text[:65536], delimiters=''.join(allowed_delimiters)).delimiter
+    except csv.Error:
+        pass
     first_line = next((line for line in text.splitlines() if line.strip()), "")
     if not first_line:
         return ","
@@ -164,7 +168,8 @@ def parse_tabular_document(
                     "duplicate_headers": duplicate_headers,
                     "has_blank_headers": has_blank_headers,
                     "is_empty_row": is_empty_row,
-                    "is_footer_row": is_footer_row,
+                    "is_footer_row": is_footer_row or row == headers,
+                    'is_repeated_header': row == headers,
                 },
             )
         )

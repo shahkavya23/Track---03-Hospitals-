@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import PurePosixPath
 from typing import Any, Optional, Sequence
 
@@ -39,32 +40,65 @@ def detect_format(
     max_json_depth: int = 64,
 ) -> tuple[FileFormat, Optional[Any]]:
     """Determine verified FileFormat (and pre-parsed JSON payload if applicable)."""
-    suffix = PurePosixPath(relative_posix).suffix.lower()
-    if suffix not in supported_extensions:
-        raise IngestionQuarantineError("unsupported format")
-
-    if suffix == ".csv":
-        return FileFormat.CSV, None
-    if suffix == ".tsv":
-        return FileFormat.TSV, None
-    if suffix == ".txt":
-        if not text.strip():
-            raise IngestionQuarantineError("empty file")
-        return FileFormat.TEXT, None
-
-    # .json -> distinguish FHIR R4 vs generic JSON
-    if not text.strip():
+    stripped = text.lstrip('\ufeff').strip()
+    if not stripped:
         raise IngestionQuarantineError("empty file")
-
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise IngestionQuarantineError("malformed or truncated json") from exc
-
-    if not _max_json_depth(parsed, max_json_depth):
-        raise IngestionQuarantineError("json nesting limit exceeded")
-
-    if isinstance(parsed, dict) and isinstance(parsed.get("resourceType"), str) and parsed["resourceType"].strip():
-        return FileFormat.FHIR_R4, parsed
-
-    return FileFormat.JSON, parsed
+    if stripped.startswith(('%PDF', 'PK\x03', 'GIF8')) or '\x00' in stripped:
+        raise IngestionQuarantineError("unsupported format")
+    if stripped.startswith('<'):
+        raise IngestionQuarantineError("xml requires a supported schema")
+    if stripped.startswith(('{', '[')):
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            lines = [line for line in stripped.splitlines() if line.strip()]
+            rows: list[Any] = []
+            parsed_chars = 0
+            for line in lines:
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
+                    parsed_chars += len(line.strip())
+            content_chars = sum(len(line.strip()) for line in lines)
+            if rows and parsed_chars / max(1, content_chars) >= .95:
+                if not _max_json_depth(rows, max_json_depth):
+                    raise IngestionQuarantineError("json nesting limit exceeded") from exc
+                return FileFormat.JSONL, rows
+            # A JSON-looking span inside prose is a mixed text document.  A
+            # structurally JSON-only document that does not parse is corrupted.
+            structural = sum(bool(re.match(r'\s*(?:[{}\[\]]|"[^"\n]+"\s*:)', line)) for line in lines)
+            if rows or (len(lines) >= 2 and structural / len(lines) < .8):
+                return FileFormat.TEXT, None
+            raise IngestionQuarantineError("malformed or truncated json") from exc
+        if not _max_json_depth(parsed, max_json_depth):
+            raise IngestionQuarantineError("json nesting limit exceeded")
+        if isinstance(parsed, dict) and isinstance(parsed.get('resourceType'), str):
+            return FileFormat.FHIR_R4, parsed
+        return FileFormat.JSON, parsed
+    # A schema-like first row plus consistent logical rows distinguishes tables
+    # from comma-containing prose. Filename suffix is never parser evidence.
+    import csv
+    import io
+    sample_lines = [line for line in text.splitlines() if line.strip()]
+    sample = '\n'.join(sample_lines)
+    for delimiter in (',', ';', '\t', '|'):
+        try:
+            rows = list(csv.reader(io.StringIO(sample), delimiter=delimiter))[:30]
+        except csv.Error:
+            continue
+        if len(rows) < 2 or len(rows[0]) < 2:
+            continue
+        width = len(rows[0])
+        consistent = sum(abs(len(row)-width) <= 1 for row in rows)
+        header = sum(bool(re.search(r'[A-Za-z\u0900-\u097f]', cell))
+                     and not bool(re.search(r'\d{5}', cell)) for cell in rows[0])
+        explicit_schema = any(re.search(r'(?i)patient|name|phone|dob|uhid|mrn|diagnos|regimen|^id$|^note$', cell) for cell in rows[0])
+        threshold = .70 if explicit_schema else .95
+        if consistent >= 2 and consistent / len(rows) >= threshold and header >= width / 2:
+            return (FileFormat.TSV if delimiter == '\t' else FileFormat.CSV), None
+    if PurePosixPath(relative_posix).suffix.lower() in {'.zip', '.xls', '.jpg', '.pdf', '.bin', '.lock'}:
+        raise IngestionQuarantineError("unsupported format")
+    return FileFormat.TEXT, None
