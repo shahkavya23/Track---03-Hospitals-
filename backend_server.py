@@ -54,8 +54,8 @@ def output_verification():
     return {'hits': hits, 'categories': counts, 'invariants_complete': False,
             'verified': False, 'export_allowed': False}
 
-HOST = "127.0.0.1"
-PORT = 8000
+HOST = "0.0.0.0"
+PORT = int(os.environ.get("PORT", "8000"))
 
 # Working directory for the UI session
 UI_WORKSPACE = Path(".raksha_ui_workspace")
