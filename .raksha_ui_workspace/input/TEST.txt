@@ -1,0 +1,9 @@
+﻿Name (identified 01/01/2025): Asha Example, S/o Relative Example
+Age/Sex: 81 Y / M (DOB O1/02/1943 as per PPO; estimate ~75)
+Address: Example Colony, Qr. No. T-14/B, Sample Junction, PIN 000000
+IDs: Aadhaar 0000 0O00 0000 | PPO-TEST-0000 | [STAFF]/SNP/0000/00000
+Informant: Son Relative Example, mob 98l5O 00000; Bahu Example One; Pota "Child Example"
+Police: Missing Report No. 000/0000, PS Sample Station, HC Officer Example (Belt No. 0000)
+Referral URL: https://example.invalid/groups/sample/posts/00000
+Dr. PSN-TEST000000000000000000 (identity hint)
+Diagnosis: Alzheimer's disease; UTI; pre-renal AKI with hyponatraemia.

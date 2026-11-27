@@ -75,7 +75,7 @@ def typed_token(category: str) -> str:
     mapping = {
         "PATIENT_NAME": "[PATIENT]", "PERSON_NAME": "[PATIENT]",
         "RELATIVE_NAME": "[RELATIVE]", "CLINICIAN_NAME": "[STAFF]",
-        "STAFF_NAME": "[STAFF]", "PHONE": "[PHONE]", "AADHAAR": "[AADHAAR]",
+        "STAFF_NAME": "[STAFF]", "STAFF_IDENTIFIER": "[STAFF]", "PHONE": "[PHONE]", "AADHAAR": "[AADHAAR]",
         "PAN": "[PAN]", "ABHA": "[ABHA]", "DL": "[DL]", "EMAIL": "[EMAIL]",
         "IP": "[IP]", "USERNAME": "[USERNAME]", "CASE_NO": "[CASE_NO]",
         "ID_MARK": "[ID_MARK]", "ADDRESS": "[ADDRESS]", "PIN_CODE": "[ADDRESS]",

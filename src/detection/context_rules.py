@@ -63,6 +63,12 @@ _RELATIVE_RE = re.compile(
     re.UNICODE,
 )
 
+# Kinship names without "of" (e.g. "Son Manoj", "Bahu Priti", "Pota 'Chintu'").
+_KINSHIP_NAME_RE = re.compile(
+    rf"(?<!\w)(?i:Son|Daughter|Wife|Husband|Father|Mother|Bahu|Beta|Beti|Pota|Poti|Grandson|Granddaughter|Caregiver|Informant)\s*(?:of\s+)?[:=,-]?\s*[\"']?(?P<rel>{_NAME_SEQ})[\"']?",
+    re.UNICODE,
+)
+
 # 3. Structural patient name preceding demographic/relation markers (works even WITHOUT "Patient:" label!)
 #    Matches: "Meera, W/o Rajan", "Anil Kapoor, 52/M", "सुनीता देवी, 34 वर्ष", "Rohan Das, DOB:"
 _PRE_DEMOGRAPHIC_PATIENT_RE = re.compile(
@@ -89,6 +95,25 @@ _LABELED_PATIENT_RE = re.compile(
 )
 
 # 6. Honorific-anchored names (`Mr. Rahul Verma`, `Smt. Meera`, `Arif sahab`, `Arif ji`, `आरिफ जी`)
+_ANNOTATED_LABELED_PATIENT_RE = re.compile(
+    rf"(?i)(?<!\w)(?:Patient(?:\s+Name)?|Pt(?:\s+Name)?|Name)\s*\([^()\n]{{1,60}}\)\s*[:=-]\s*(?P<pt>{_NAME_SEQ})",
+    re.UNICODE,
+)
+_PARENTHETICAL_DEMOGRAPHIC_NAME_RE = re.compile(
+    rf"(?P<pt>{_NAME_SEQ})\s*\(\s*\d{{1,3}}\s*(?:Y|Years?)?\s*(?:[,/]\s*|\s+)(?:M|F|Male|Female)\b",
+    re.IGNORECASE | re.UNICODE,
+)
+_ROLE_NAME_RE = re.compile(
+    rf"(?i)(?:\b(?:social\s+worker|activist|case\s+worker|counsell?or)|\u0938\u093e\u092e\u093e\u091c\u093f\u0915\s+\u0915\u093e\u0930\u094d\u092f\u0915\u0930\u094d\u0924\u093e)\s*\(\s*(?P<name>{_NAME_SEQ})\s*\)",
+    re.UNICODE,
+)
+_STAFF_ROLE_NAME_RE = re.compile(
+    rf"(?i)(?<!\w)(?:HC|Head\s+Constable|Constable)\s+(?P<name>{_NAME_SEQ})",
+    re.UNICODE,
+)
+_ADDRESS_UNIT_RE = re.compile(r"(?i)(?<!\w)(?:Qr\.?\s*No\.?|Quarter\s*No\.?)\s*[:#.-]?\s*[A-Z0-9/-]{2,15}")
+_CLINICIAN_ID_RE = re.compile(r"(?i)(?<!\w)(?P<title>Dr\.?)\s+(?P<id>PSN-[A-Z0-9]{12,})")
+
 _PREFIX_HONORIFIC_RE = re.compile(
     rf"(?<!\w)(?:Mr|Mrs|Ms|Miss|Smt|Shri|Sri|Shree|Kumari|श्री|श्रीमती|कुमारी)\.?\s+(?P<name>{_NAME_SEQ})",
     re.UNICODE,
@@ -237,6 +262,8 @@ def detect_context_candidates(
 
     # 1. Clinicians (`Dr. Ramesh`, `डॉ. शर्मा`) -> STAFF_OR_FACILITY
     for m in _CLINICIAN_RE.finditer(norm):
+        if _CLINICIAN_ID_RE.match(norm, m.start()):
+            continue
         grp = "name" if m.group("name") else "name2"
         ns, ne = m.span(grp)
         # Keep an explicit clinician title in the protected staff span, but do not
@@ -251,6 +278,13 @@ def detect_context_candidates(
             include_prefix_start=prefix_start,
         )
 
+    for m in _CLINICIAN_ID_RE.finditer(norm):
+        s, e = idx_text.to_original_span(*m.span("id"))
+        candidates.append(ContextCandidate(
+            start=s, end=e, category="STAFF_IDENTIFIER", role=SpanRole.DIRECT_PII,
+            confidence=0.99, detector_source="context_clinician_identifier",
+        ))
+
     # 2. Relatives (`W/o`, `S/o`, `D/o`, `पत्नी`, `पुत्र`, `पुत्री`) -> RELATIVE_NAME
     for m in _RELATIVE_RE.finditer(norm):
         ns, ne = m.span("rel")
@@ -260,6 +294,13 @@ def detect_context_candidates(
         )
 
     # 3. `C/O` disambiguation (Care-of relative vs Complaint-of clinical symptom)
+    for m in _KINSHIP_NAME_RE.finditer(norm):
+        ns, ne = m.span("rel")
+        add_name_match(
+            ns, ne, "RELATIVE_NAME", SpanRole.DIRECT_PII, 0.91, "context_kinship_name",
+            emit_relative_attrs=True,
+        )
+
     for m in _CARE_OF_RE.finditer(norm):
         rhs = m.group("rhs").strip()
         left_ctx = norm[max(0, m.start() - 40) : m.start()]
@@ -299,6 +340,33 @@ def detect_context_candidates(
         )
 
     # 6. Honorific-anchored names (`Mr. Rahul`, `Arif sahab`, `Arif ji`, `आरिफ जी`)
+    for m in _ANNOTATED_LABELED_PATIENT_RE.finditer(norm):
+        ns, ne = m.span("pt")
+        add_name_match(
+            ns, ne, "PATIENT_NAME", SpanRole.DIRECT_PII, 0.96, "context_annotated_patient",
+            emit_patient_attrs=True,
+        )
+
+    for m in _PARENTHETICAL_DEMOGRAPHIC_NAME_RE.finditer(norm):
+        ns, ne = m.span("pt")
+        add_name_match(
+            ns, ne, "PERSON_NAME", SpanRole.DIRECT_PII, 0.91, "context_demographic_name",
+            emit_patient_attrs=True,
+        )
+
+    for m in _ROLE_NAME_RE.finditer(norm):
+        ns, ne = m.span("name")
+        add_name_match(
+            ns, ne, "PERSON_NAME", SpanRole.DIRECT_PII, 0.90, "context_role_name",
+            emit_patient_attrs=True,
+        )
+
+    for m in _STAFF_ROLE_NAME_RE.finditer(norm):
+        ns, ne = m.span("name")
+        add_name_match(
+            ns, ne, "STAFF_NAME", SpanRole.DIRECT_PII, 0.92, "context_staff_role",
+        )
+
     for m in _PREFIX_HONORIFIC_RE.finditer(norm):
         ns, ne = m.span("name")
         add_name_match(
@@ -423,5 +491,12 @@ def detect_context_candidates(
                 extra_attr_val=frag if is_dist else None,
             )
         )
+
+    for m in _ADDRESS_UNIT_RE.finditer(norm):
+        s, e = idx_text.to_original_span(m.start(), m.end())
+        candidates.append(ContextCandidate(
+            start=s, end=e, category="ADDRESS", role=SpanRole.DIRECT_PII,
+            confidence=0.91, detector_source="context_address_unit",
+        ))
 
     return candidates

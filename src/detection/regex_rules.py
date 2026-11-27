@@ -67,6 +67,7 @@ class RegexCandidate:
 
 _ABHA_PHR_RE = re.compile(r"\b[A-Za-z0-9][A-Za-z0-9._-]{1,40}@(?:abdm|ndhm|sbx)\b", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_WEB_URL_RE = re.compile(r"(?i)\bhttps?://[^\s<>\]\[(){}\"']+")
 
 _ABHA_LABELED_RE = re.compile(
     r"\b(?:ABHA(?:\s*(?:ID|No|Number))?|Ayushman\s*ID|Health\s*ID|आभा(?:\s*(?:आईडी|नंबर))?)"
@@ -81,6 +82,18 @@ _AADHAAR_LABELED_RE = re.compile(
     re.IGNORECASE,
 )
 _AADHAAR_UNLABELED_RE = re.compile(r"(?<!\d)([2-9]\d{3}[\s-]?\d{4}[\s-]?\d{4})(?!\d)")
+_OCR_AADHAAR_LABELED_RE = re.compile(
+    r"(?i)\b(?:Aadhaar|Aadhar|UIDAI|UID)\s*[:=#-]?\s*((?:[0-9OIl]{4}[\s-]?){2}[0-9OIl]{4})\b"
+)
+_OCR_LABELED_PHONE_RE = re.compile(
+    r"(?i)\b(?:Phone|Mobile|Mob|Contact|Tel)\s*[:=#-]?\s*([6-9][0-9OIl](?:[\s.-]?[0-9OIl]){8})\b"
+)
+_OCR_LABELED_PIN_RE = re.compile(
+    r"(?i)\b(?:PIN(?:\s*Code)?|Pincode|Postal\s*Code)\s*[:=#-]?\s*([1-8][0-9OIl]{5})\b"
+)
+_OCR_LABELED_DATE_RE = re.compile(
+    r"(?i)\b(?:DOB|D\.O\.B\.?|Date\s+of\s+Birth)\s*[:=#-]?\s*([0-9OIl]{1,2}[/-][0-9OIl]{1,2}[/-][0-9OIl]{4})\b"
+)
 
 _PAN_LABELED_RE = re.compile(
     r"\b(?:PAN(?:\s*(?:No|Number|Card|ID))?|पैन)\s*[:=#-]?\s*([A-Z]{5}\d{4}[A-Z])\b",
@@ -96,6 +109,13 @@ _LOCAL_ID_RE = re.compile(
     r"\.?\s*[:=#-]?\s*(?P<val>(?=[A-Z0-9/_-]*\d)[A-Z0-9][A-Z0-9/_-]{2,22})\b",
     re.IGNORECASE,
 )
+_EXTRA_LOCAL_ID_RE = re.compile(
+    r"(?i)\b(?:PPO|Belt\s*No\.?|Report\s*No\.?|Reg(?:istration)?\.?|Ref(?:erence)?\s*(?:No|ID|Ref)|"
+    r"Auth(?:orization)?\s*(?:No|ID|Ref)|Staff\s*ID)\s*[:=#-]?\s*"
+    r"(?P<val>(?=[A-Z0-9/_-]*\d)[A-Z0-9][A-Z0-9/_-]{2,30})\b"
+)
+_STAFF_BADGE_RE = re.compile(r"(?i)\[STAFF\]\s*(?P<val>/[A-Z0-9_-]+(?:/[A-Z0-9_-]+)+)")
+
 _INSURANCE_RE = re.compile(
     r"\b(?:Insurance(?:\s*(?:ID|No|Number|Card))?|Policy(?:\s*(?:No|Number|ID))?|TPA\s*ID|"
     r"Ayushman\s*Card|बीमा(?:\s*(?:नंबर|संख्या|आईडी))?)\.?\s*[:=#-]?\s*"
@@ -206,6 +226,15 @@ def detect_regex_candidates(
             )
         )
 
+    for m in _WEB_URL_RE.finditer(norm):
+        s, e = idx_text.to_original_span(m.start(), m.end())
+        candidates.append(
+            RegexCandidate(
+                start=s, end=e, category="URL", role=SpanRole.DIRECT_PII,
+                confidence=0.97, detector_source="regex_url",
+            )
+        )
+
     # 2. ABHA 14-digit health IDs
     for pattern, conf in ((_ABHA_LABELED_RE, 0.99), (_ABHA_FORMAT_RE, 0.95)):
         for m in pattern.finditer(norm):
@@ -249,6 +278,24 @@ def detect_regex_candidates(
             )
         )
         occupied_strong_ids.append((val_start, val_end))
+
+    for m in _OCR_AADHAAR_LABELED_RE.finditer(norm):
+        val_start, val_end = m.span(1)
+        if any(val_start < oe and os < val_end for os, oe in occupied_strong_ids):
+            continue
+        s, e = idx_text.to_original_span(val_start, val_end)
+        candidates.append(RegexCandidate(
+            start=s, end=e, category="AADHAAR", role=SpanRole.DIRECT_PII,
+            confidence=0.93, detector_source="regex_aadhaar_ocr",
+        ))
+        occupied_strong_ids.append((val_start, val_end))
+
+    for m in _OCR_LABELED_DATE_RE.finditer(norm):
+        s, e = idx_text.to_original_span(*m.span(1))
+        candidates.append(RegexCandidate(
+            start=s, end=e, category="DOB", role=SpanRole.QUASI_IDENTIFIER,
+            confidence=0.92, detector_source="regex_dob_ocr",
+        ))
 
     for m in _AADHAAR_UNLABELED_RE.finditer(norm):
         val_start, val_end = m.span(1)
@@ -342,6 +389,21 @@ def detect_regex_candidates(
         )
         occupied_strong_ids.append((val_start, val_end))
 
+    for pattern, category, source in (
+        (_EXTRA_LOCAL_ID_RE, "CASE_NO", "regex_contextual_id"),
+        (_STAFF_BADGE_RE, "STAFF_IDENTIFIER", "regex_staff_badge"),
+    ):
+        for m in pattern.finditer(norm):
+            val_start, val_end = m.span("val")
+            if any(val_start < oe and os < val_end for os, oe in occupied_strong_ids):
+                continue
+            s, e = idx_text.to_original_span(val_start, val_end)
+            candidates.append(RegexCandidate(
+                start=s, end=e, category=category, role=SpanRole.DIRECT_PII,
+                confidence=0.94, detector_source=source,
+            ))
+            occupied_strong_ids.append((val_start, val_end))
+
     for m in _INSURANCE_RE.finditer(norm):
         val_start, val_end = m.span("val")
         if any(val_start < oe and os < val_end for os, oe in occupied_strong_ids):
@@ -384,6 +446,27 @@ def detect_regex_candidates(
             )
         )
         occupied_strong_ids.append((m.start(), m.end()))
+
+    for m in _OCR_LABELED_PHONE_RE.finditer(norm):
+        val_start, val_end = m.span(1)
+        if any(val_start < oe and os < val_end for os, oe in occupied_strong_ids):
+            continue
+        s, e = idx_text.to_original_span(val_start, val_end)
+        candidates.append(RegexCandidate(
+            start=s, end=e, category="PHONE", role=SpanRole.DIRECT_PII,
+            confidence=0.91, detector_source="regex_phone_ocr",
+        ))
+        occupied_strong_ids.append((val_start, val_end))
+
+    for m in _OCR_LABELED_PIN_RE.finditer(norm):
+        val_start, val_end = m.span(1)
+        if any(val_start < oe and os < val_end for os, oe in occupied_strong_ids):
+            continue
+        s, e = idx_text.to_original_span(val_start, val_end)
+        candidates.append(RegexCandidate(
+            start=s, end=e, category="PIN_CODE", role=SpanRole.QUASI_IDENTIFIER,
+            confidence=0.90, detector_source="regex_pin_ocr",
+        ))
 
     # 7. PIN Codes
     for pattern, conf in ((_PIN_LABELED_RE, 0.96), (_PIN_CONTEXT_RE, 0.85)):

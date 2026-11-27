@@ -85,6 +85,10 @@ CLINICAL_PATTERNS = [
 
 PHONE_PATTERN = re.compile(r"(?:\+?91[\-\s]?)?[6-9]\d{9}\b")
 EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+ATTACHMENT_FILENAME_PATTERN = re.compile(
+    r"\b[A-Za-z0-9][A-Za-z0-9_\-\.]*\.(?:pdf|docx?|xlsx?|png|jpe?g|tiff?|bmp|gif)\b",
+    re.IGNORECASE,
+)
 AADHAAR_PATTERN = re.compile(r"\b\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b")
 ABHA_PATTERN = re.compile(r"\b(?:ABHA[\-:]?\s*)?\d{2}[\-]\d{4}[\-]\d{4}[\-]\d{4}\b|\bABHA\|\d+\b", re.IGNORECASE)
 PAN_PATTERN = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b")
@@ -262,6 +266,20 @@ class UIPIIDetector(PIIDetector):
                         role=SpanRole.DIRECT_PII,
                         confidence=0.98,
                         detector_source="ui_detector_email",
+                    )
+                )
+
+            for m in ATTACHMENT_FILENAME_PATTERN.finditer(text):
+                spans.append(
+                    DetectionSpan(
+                        record_ref=record.record_ref,
+                        field_path=node.field_path,
+                        start=m.start(),
+                        end=m.end(),
+                        category="ATTACHMENT",
+                        role=SpanRole.DIRECT_PII,
+                        confidence=0.96,
+                        detector_source="ui_detector_attachment",
                     )
                 )
 
